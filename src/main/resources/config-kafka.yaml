@@ -1,0 +1,26 @@
+source:
+  type: kafka
+  properties:
+    bootstrapServers: "localhost:9092"
+    topic: "input-topic"
+    groupId: "my-group"
+    autoOffsetReset: "earliest"
+    keyDeserializer: "org.apache.kafka.common.serialization.StringDeserializer"
+    valueDeserializer: "org.apache.kafka.common.serialization.StringDeserializer"
+
+transformations:
+  - type: filter
+    properties:
+      condition: "important"
+  - type: map
+    properties:
+      prefix: "processed-"
+      suffix: "-done"
+
+sink:
+  type: kafka
+  properties:
+    bootstrapServers: "localhost:9092"
+    topic: "output-topic"
+    keySerializer: "org.apache.kafka.common.serialization.StringSerializer"
+    valueSerializer: "org.apache.kafka.common.serialization.StringSerializer"

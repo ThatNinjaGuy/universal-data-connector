@@ -3,32 +3,46 @@ package com.example.pipeline.factory;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Serializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class FileSinkContext implements AutoCloseable {
-    private final BufferedWriter writer;
+public class FileSinkContext implements Serializable {
+    private static final Logger logger = LoggerFactory.getLogger(FileSinkContext.class);
+    private final String filePath;
+    private transient BufferedWriter writer;
 
-    public FileSinkContext(String path) throws IOException {
+    public FileSinkContext(String filePath) {
+        this.filePath = filePath;
+    }
+
+    public void init() {
         try {
-            this.writer = new BufferedWriter(new FileWriter(path, true));
+            writer = new BufferedWriter(new FileWriter(filePath, true)); // true for append mode
         } catch (IOException e) {
-            throw new IOException("Failed to initialize file sink: " + e.getMessage(), e);
+            logger.error("Failed to initialize file writer: {}", e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 
-    public void receive(String item) throws IOException {
+    public void write(String item) {
         try {
             writer.write(item);
             writer.newLine();
             writer.flush();
         } catch (IOException e) {
-            throw new IOException("Failed to write to file: " + e.getMessage(), e);
+            logger.error("Failed to write to file: {}", e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 
-    @Override
-    public void close() throws IOException {
+    public void close() {
         if (writer != null) {
-            writer.close();
+            try {
+                writer.close();
+            } catch (IOException e) {
+                logger.error("Failed to close file writer: {}", e.getMessage());
+            }
         }
     }
-} 
+}

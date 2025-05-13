@@ -1,12 +1,7 @@
 source:
-  type: kafka
+  type: file
   properties:
-    bootstrapServers: localhost:9092
-    topic: input-topic
-    groupId: my-group
-    autoOffsetReset: earliest
-    keyDeserializer: org.apache.kafka.common.serialization.StringDeserializer
-    valueDeserializer: org.apache.kafka.common.serialization.StringDeserializer
+    path: "data/input"
 
 transformations:
   - type: filter
@@ -18,9 +13,8 @@ transformations:
       suffix: "-done"
 
 sink:
-  type: kafka
+  type: file
   properties:
-    bootstrapServers: localhost:9092
-    topic: output-topic
-    keySerializer: org.apache.kafka.common.serialization.StringSerializer
-    valueSerializer: org.apache.kafka.common.serialization.StringSerializer
+    path: "data/output"
+    prefix: "processed"
+    extension: ".txt"

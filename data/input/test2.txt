@@ -1,0 +1,12 @@
+important message from file 1
+not so important message
+another important update from file
+this should be filtered out
+very important notification
+regular message here
+important alert from system
+important message from file 2
+another important update from file 2
+very important notification from file 2
+regular message here from file 2
+important alert from system from file 2

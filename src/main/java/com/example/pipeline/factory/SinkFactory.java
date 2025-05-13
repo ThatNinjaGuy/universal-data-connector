@@ -11,10 +11,15 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.kafka.clients.producer.ProducerConfig;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Map;
 import java.util.Properties;
+import java.util.HashMap;
 
 public class SinkFactory {
     private static final Logger logger = LoggerFactory.getLogger(SinkFactory.class);
@@ -25,10 +30,24 @@ public class SinkFactory {
 
         SerializableKafkaConfig(Map<String, String> properties) {
             this.props = new Properties();
-            this.props.putAll(properties);
-            this.props.putIfAbsent("key.serializer", StringSerializer.class.getName());
-            this.props.putIfAbsent("value.serializer", StringSerializer.class.getName());
+            
+            // Set bootstrap servers with correct property name
+            this.props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, properties.get("bootstrapServers"));
+            this.props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+            this.props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+            
             this.topic = properties.get("topic");
+            
+            // Add debug logging
+            logger.info("Created Kafka config with properties: {}", this.props);
+        }
+
+        Properties getProperties() {
+            return props;
+        }
+
+        String getTopic() {
+            return topic;
         }
     }
 
@@ -106,7 +125,21 @@ public class SinkFactory {
     }
 
     private static Sink<String> createFileSink(SinkConfig config) {
-        return Sinks.files(config.getProperties().get("path"));
+        Map<String, String> props = config.getProperties();
+        String directory = props.get("path");
+        String prefix = props.getOrDefault("prefix", "output");
+        String extension = props.getOrDefault("extension", ".txt");
+
+        return SinkBuilder
+            .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension))
+            .<String>receiveFn((FileSinkContext context, String item) -> {
+                // Use processor name for file separation
+                String outputFile = String.format("%s/%s_%d%s", 
+                    directory, prefix, System.nanoTime() % 100, extension);
+                context.write(outputFile, item + "\n");
+            })
+            .destroyFn(FileSinkContext::close)
+            .build();
     }
 
     private static Sink<String> createJdbcSink(SinkConfig config) {
@@ -116,5 +149,49 @@ public class SinkFactory {
             config.getProperties().get("jdbcUrl"),
             (stmt, item) -> stmt.setString(1, item)
         );
+    }
+
+    private static class FileSinkContext implements Serializable {
+        private final String directory;
+        private final String prefix;
+        private final String extension;
+        private final Map<String, BufferedWriter> writers = new HashMap<>();
+
+        FileSinkContext(String directory, String prefix, String extension) {
+            this.directory = directory;
+            this.prefix = prefix;
+            this.extension = extension;
+        }
+
+        void write(String filename, String item) {
+            try {
+                BufferedWriter writer = writers.computeIfAbsent(filename, this::createWriter);
+                writer.write(item);
+                writer.flush();
+            } catch (IOException e) {
+                logger.error("Failed to write to file: {}", e.getMessage());
+                throw new RuntimeException(e);
+            }
+        }
+
+        private BufferedWriter createWriter(String filename) {
+            try {
+                return new BufferedWriter(new FileWriter(filename, true));
+            } catch (IOException e) {
+                logger.error("Failed to create writer for file: {}", e.getMessage());
+                throw new RuntimeException(e);
+            }
+        }
+
+        void close() {
+            writers.values().forEach(writer -> {
+                try {
+                    writer.close();
+                } catch (IOException e) {
+                    logger.error("Failed to close writer: {}", e.getMessage());
+                }
+            });
+            writers.clear();
+        }
     }
 } 
