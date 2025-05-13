@@ -2,10 +2,11 @@ package com.example.pipeline.config;
 
 import java.io.Serializable;
 import java.util.Map;
+import java.util.HashMap;
 
 public class TransformationConfig implements Serializable {
     private String type;
-    private Map<String, String> properties;
+    private Map<String, Object> properties;
     private String condition;
     private String expression;
 
@@ -17,11 +18,11 @@ public class TransformationConfig implements Serializable {
         this.type = type;
     }
 
-    public Map<String, String> getProperties() {
-        return properties;
+    public Map<String, Object> getProperties() {
+        return properties != null ? properties : new HashMap<>();
     }
 
-    public void setProperties(Map<String, String> properties) {
+    public void setProperties(Map<String, Object> properties) {
         this.properties = properties;
     }
 

@@ -169,13 +169,18 @@ public class SourceFactory {
         try (BufferedReader reader = new BufferedReader(new FileReader(file.toFile()))) {
             String line;
             String fileName = file.getFileName().toString();
+            boolean isCsv = fileName.endsWith(".csv");
+            
+            // Add metadata with file type
+            String metadataPrefix = String.format("SOURCE=%s|TYPE=%s|", 
+                fileName, 
+                isCsv ? "CSV" : "TEXT");
+
             while ((line = reader.readLine()) != null) {
-                // Add source file name as metadata prefix
-                String itemWithMetadata = String.format("SOURCE_FILE:%s|CONTENT:%s", fileName, line);
-                buffer.add(itemWithMetadata);
+                buffer.add(metadataPrefix + line);
             }
             
-            // Move file to processed directory after successful processing
+            // Move file after processing
             Path processedDir = Paths.get("data/processed");
             if (!Files.exists(processedDir)) {
                 Files.createDirectories(processedDir);

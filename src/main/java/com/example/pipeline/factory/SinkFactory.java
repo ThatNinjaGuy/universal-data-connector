@@ -134,23 +134,27 @@ public class SinkFactory {
         String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
 
-        // Create processed directory if it doesn't exist
-        new File("data/processed").mkdirs();
-
         return SinkBuilder
             .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension))
             .<String>receiveFn((FileSinkContext context, String item) -> {
-                // Parse metadata to get source file info
-                String[] parts = item.split("\\|", 2);
-                String sourceFile = parts[0].substring("SOURCE_FILE:".length());
-                String content = parts[1].substring("CONTENT:".length());
+                // Parse metadata
+                String[] parts = item.split("\\|");
+                String sourceFile = parts[0].substring("SOURCE=".length());
+                String fileType = parts[1].substring("TYPE=".length());
+                String content = parts[2];
                 
-                // Create unique output file name for this source file
+                // Create output filename
                 String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
                 String outputFile = String.format("%s/%s_%s_%s%s",
                     directory, prefix, 
-                    sourceFile.replace(".txt", ""),
-                    timestamp, extension);
+                    sourceFile.replace(fileType.equals("CSV") ? ".csv" : ".txt", ""),
+                    timestamp,
+                    fileType.equals("CSV") ? ".csv" : ".txt");
+                
+                // Add appropriate suffix for text files
+                if (fileType.equals("TEXT")) {
+                    content = "processed-" + content + "-done";
+                }
                 
                 context.write(outputFile, content + "\n");
             })
