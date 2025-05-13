@@ -25,6 +25,39 @@ mvn clean package
 
 ## Setting up Kafka (if using Kafka source/sink)
 
+### For Mac Users (using Homebrew)
+
+1. Install Kafka using Homebrew (this will also install Zookeeper):
+
+```bash
+# Install Homebrew if you haven't already
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Kafka
+brew install kafka
+```
+
+2. Start Zookeeper (in a separate terminal):
+
+```bash
+brew services start zookeeper
+```
+
+3. Start Kafka (in a separate terminal):
+
+```bash
+brew services start kafka
+```
+
+4. Verify services are running:
+
+```bash
+brew services list
+# Should show both kafka and zookeeper as "started"
+```
+
+### For Other Operating Systems (Manual Setup)
+
 1. Download and extract Kafka:
 
 ```bash
@@ -45,20 +78,78 @@ bin/zookeeper-server-start.sh config/zookeeper.properties
 bin/kafka-server-start.sh config/server.properties
 ```
 
-4. Create required topics:
+### Creating Required Topics
+
+1. Create the topics needed for the pipeline:
 
 ```bash
 # Create input topic
-bin/kafka-topics.sh --create --topic input-topic \
+kafka-topics --create --topic input-topic \
     --bootstrap-server localhost:9092 \
     --partitions 1 \
     --replication-factor 1
 
 # Create output topic
-bin/kafka-topics.sh --create --topic output-topic \
+kafka-topics --create --topic output-topic \
     --bootstrap-server localhost:9092 \
     --partitions 1 \
     --replication-factor 1
+```
+
+2. Verify topics were created:
+
+```bash
+kafka-topics --list --bootstrap-server localhost:9092
+```
+
+### Stopping Kafka (when done)
+
+For Mac users:
+
+```bash
+# Stop Kafka
+brew services stop kafka
+
+# Stop Zookeeper
+brew services stop zookeeper
+```
+
+For other operating systems:
+
+```bash
+# Stop Kafka
+bin/kafka-server-stop.sh
+
+# Stop Zookeeper
+bin/zookeeper-server-stop.sh
+```
+
+### Troubleshooting Kafka
+
+1. Verify Kafka is running:
+
+```bash
+lsof -i :9092
+```
+
+2. Check Kafka logs:
+
+```bash
+# For Mac (Homebrew installation)
+tail -f /usr/local/var/log/kafka/kafka_output.log
+
+# For manual installation
+tail -f logs/server.log
+```
+
+3. Check Zookeeper logs:
+
+```bash
+# For Mac (Homebrew installation)
+tail -f /usr/local/var/log/zookeeper/zookeeper.log
+
+# For manual installation
+tail -f logs/zookeeper.log
 ```
 
 ## Configuration

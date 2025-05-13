@@ -27,26 +27,45 @@ public class SourceFactory {
 
         SerializableKafkaConfig(Map<String, String> properties) {
             this.props = new Properties();
-            this.props.putAll(properties);
-            this.props.putIfAbsent(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-            this.props.putIfAbsent(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+            
+            this.props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, properties.get("bootstrapServers"));
+            this.props.put(ConsumerConfig.GROUP_ID_CONFIG, properties.get("groupId"));
+            this.props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, properties.get("autoOffsetReset"));
+            this.props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+            this.props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+            
             this.topic = properties.get("topic");
+            
+            logger.info("Created Kafka config with properties: {}", this.props);
+        }
+
+        Properties getProperties() {
+            return props;
+        }
+
+        String getTopic() {
+            return topic;
         }
     }
 
     private static class KafkaSourceContext implements Serializable {
         private final SerializableKafkaConfig config;
-        private transient KafkaConsumer<String, String> consumer;
+        private KafkaConsumer<String, String> consumer;
 
         KafkaSourceContext(SerializableKafkaConfig config) {
             this.config = config;
         }
 
         void init() {
-            if (consumer == null) {
-                consumer = new KafkaConsumer<>(config.props);
-                consumer.subscribe(Collections.singletonList(config.topic));
-            }
+            Properties props = new Properties();
+            props.putAll(config.getProperties());
+            
+            logger.info("Initializing Kafka consumer with properties: {}", props);
+            
+            consumer = new KafkaConsumer<>(props);
+            consumer.subscribe(Collections.singletonList(config.getTopic()));
+            
+            logger.info("Successfully created Kafka consumer for topic: {}", config.getTopic());
         }
 
         void fillBuffer(SourceBuilder.SourceBuffer<String> buffer) {
