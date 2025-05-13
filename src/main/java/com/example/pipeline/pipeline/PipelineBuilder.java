@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 public class PipelineBuilder {
     private static final Logger logger = LoggerFactory.getLogger(PipelineBuilder.class);
@@ -31,7 +33,7 @@ public class PipelineBuilder {
 
         @Override
         public boolean testEx(String item) {
-            String condition = config.getProperties().get("condition");
+            String condition = config.getProperties().get("condition").toString();
             return item != null && item.contains(condition);
         }
     }
@@ -45,8 +47,8 @@ public class PipelineBuilder {
 
         @Override
         public String applyEx(String item) {
-            String prefix = config.getProperties().getOrDefault("prefix", "");
-            String suffix = config.getProperties().getOrDefault("suffix", "");
+            String prefix = config.getProperties().getOrDefault("prefix", "").toString();
+            String suffix = config.getProperties().getOrDefault("suffix", "").toString();
             return prefix + item + suffix;
         }
     }
@@ -58,13 +60,72 @@ public class PipelineBuilder {
 
         StreamStage<String> current = stage;
         for (TransformationConfig transformation : config.getTransformations()) {
-            switch (transformation.getType().toLowerCase()) {
-                case "filter" -> current = current.filter(new SerializableFilter(transformation));
-                case "map" -> current = current.map(new SerializableMapper(transformation));
-                default -> logger.warn("Unknown transformation type: {}", transformation.getType());
-            }
+            current = switch (transformation.getType().toLowerCase()) {
+                case "filter" -> current.filter(new SerializableFilter(transformation));
+                case "map" -> current.map(new SerializableMapper(transformation));
+                default -> {
+                    logger.warn("Unknown transformation type: {}", transformation.getType());
+                    yield current;
+                }
+            };
         }
         return current;
+    }
+
+    private StreamStage<String> applyTransformation(StreamStage<String> stage, TransformationConfig config) {
+        return switch (config.getType().toLowerCase()) {
+            case "filter" -> applyFilter(stage, config);
+            case "map" -> applyMap(stage, config);
+            default -> throw new IllegalArgumentException("Unknown transformation type: " + config.getType());
+        };
+    }
+
+    private StreamStage<String> applyFilter(StreamStage<String> stage, TransformationConfig config) {
+        Map<String, Object> props = config.getProperties();
+        String condition = props.getOrDefault("condition", "").toString();
+        String column = props.getOrDefault("column", "").toString();
+
+        if (column != null && !column.isEmpty()) {
+            // CSV filtering
+            return stage.filter(line -> {
+                String[] parts = line.split("\\|");
+                if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
+                    String[] fields = parts[2].split(",");
+                    // TODO: Add proper CSV parsing with header mapping
+                    return fields.length > 2 && fields[2].contains(condition);
+                }
+                return line.contains(condition);
+            });
+        } else {
+            // Text filtering
+            return stage.filter(line -> line.contains(condition));
+        }
+    }
+
+    private StreamStage<String> applyMap(StreamStage<String> stage, TransformationConfig config) {
+        Map<String, Object> props = config.getProperties();
+        String format = props.getOrDefault("format", "text").toString();
+
+        if ("csv".equals(format)) {
+            @SuppressWarnings("unchecked")
+            Map<String, String> columnMapping = (Map<String, String>) props.getOrDefault("columnMapping", new HashMap<>());
+            return stage.map(line -> mapCsvLine(line, columnMapping));
+        } else {
+            String prefix = props.getOrDefault("prefix", "").toString();
+            String suffix = props.getOrDefault("suffix", "").toString();
+            return stage.map(line -> prefix + line + suffix);
+        }
+    }
+
+    private String mapCsvLine(String line, Map<String, String> columnMapping) {
+        String[] parts = line.split("\\|");
+        if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
+            // Process CSV content
+            String[] fields = parts[2].split(",");
+            // TODO: Implement proper CSV field mapping
+            return parts[0] + "|" + parts[1] + "|" + parts[2];
+        }
+        return line;
     }
 
     public Pipeline build() {
