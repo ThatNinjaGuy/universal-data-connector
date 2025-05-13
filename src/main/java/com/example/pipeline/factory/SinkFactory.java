@@ -20,6 +20,10 @@ import java.io.Serializable;
 import java.util.Map;
 import java.util.Properties;
 import java.util.HashMap;
+import java.io.File;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Set;
 
 public class SinkFactory {
     private static final Logger logger = LoggerFactory.getLogger(SinkFactory.class);
@@ -130,13 +134,25 @@ public class SinkFactory {
         String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
 
+        // Create processed directory if it doesn't exist
+        new File("data/processed").mkdirs();
+
         return SinkBuilder
             .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension))
             .<String>receiveFn((FileSinkContext context, String item) -> {
-                // Use processor name for file separation
-                String outputFile = String.format("%s/%s_%d%s", 
-                    directory, prefix, System.nanoTime() % 100, extension);
-                context.write(outputFile, item + "\n");
+                // Parse metadata to get source file info
+                String[] parts = item.split("\\|", 2);
+                String sourceFile = parts[0].substring("SOURCE_FILE:".length());
+                String content = parts[1].substring("CONTENT:".length());
+                
+                // Create unique output file name for this source file
+                String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
+                String outputFile = String.format("%s/%s_%s_%s%s",
+                    directory, prefix, 
+                    sourceFile.replace(".txt", ""),
+                    timestamp, extension);
+                
+                context.write(outputFile, content + "\n");
             })
             .destroyFn(FileSinkContext::close)
             .build();
@@ -156,6 +172,7 @@ public class SinkFactory {
         private final String prefix;
         private final String extension;
         private final Map<String, BufferedWriter> writers = new HashMap<>();
+        private final Set<String> processedFiles = new HashSet<>();
 
         FileSinkContext(String directory, String prefix, String extension) {
             this.directory = directory;
@@ -192,6 +209,26 @@ public class SinkFactory {
                 }
             });
             writers.clear();
+        }
+
+        String getSourceFile(String item) {
+            // This should be enhanced to get actual source file info from your pipeline
+            return "data/input/test.txt"; // Placeholder - needs actual implementation
+        }
+
+        void moveToProcessed(String sourceFile) {
+            if (!processedFiles.contains(sourceFile)) {
+                try {
+                    File source = new File(sourceFile);
+                    File dest = new File("data/processed/" + source.getName());
+                    if (source.renameTo(dest)) {
+                        processedFiles.add(sourceFile);
+                        logger.info("Moved {} to processed directory", source.getName());
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to move file: {}", e.getMessage());
+                }
+            }
         }
     }
 } 

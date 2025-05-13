@@ -13,7 +13,13 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -101,6 +107,10 @@ public class SourceFactory {
         }
     }
 
+    private static class FileSourceContext implements Serializable {
+        // Empty context class - processing moved to fillBufferFn
+    }
+
     public static StreamSource<String> create(SourceConfig config) {
         if (config == null || config.getType() == null) {
             throw new IllegalArgumentException("Source configuration is missing or invalid");
@@ -131,7 +141,50 @@ public class SourceFactory {
 
     private static StreamSource<String> createFileSource(SourceConfig config) {
         validateFileConfig(config);
-        return Sources.fileWatcher(config.getProperties().get("path"));
+        String path = config.getProperties().get("path");
+        
+        return SourceBuilder
+            .stream("file-source", ctx -> new FileSourceContext())
+            .<String>fillBufferFn((context, buffer) -> {
+                try (var dirStream = Files.list(Paths.get(path))) {
+                    dirStream
+                        .filter(Files::isRegularFile)
+                        .forEach(file -> processFile(file, buffer));
+                } catch (IOException e) {
+                    logger.error("Failed to list files: {}", e.getMessage());
+                }
+                // Add delay to prevent continuous scanning
+                Thread.sleep(1000);
+            })
+            .build();
+    }
+
+    private static void processFile(Path file, SourceBuilder.SourceBuffer<String> buffer) {
+        // Skip already processed files
+        if (file.getFileName().toString().startsWith(".") || 
+            Files.exists(Paths.get("data/processed", file.getFileName().toString()))) {
+            return;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file.toFile()))) {
+            String line;
+            String fileName = file.getFileName().toString();
+            while ((line = reader.readLine()) != null) {
+                // Add source file name as metadata prefix
+                String itemWithMetadata = String.format("SOURCE_FILE:%s|CONTENT:%s", fileName, line);
+                buffer.add(itemWithMetadata);
+            }
+            
+            // Move file to processed directory after successful processing
+            Path processedDir = Paths.get("data/processed");
+            if (!Files.exists(processedDir)) {
+                Files.createDirectories(processedDir);
+            }
+            Files.move(file, processedDir.resolve(fileName));
+            logger.info("Processed and moved file: {}", fileName);
+        } catch (IOException e) {
+            logger.error("Failed to process file {}: {}", file, e.getMessage());
+        }
     }
 
     private static void validateKafkaConfig(SourceConfig config) {
