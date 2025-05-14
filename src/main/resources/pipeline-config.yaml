@@ -1,21 +1,86 @@
-source:
-  type: file
-  properties:
-    path: "data/input"
-    pattern: "*.txt" # Only process text files
+pipelines:
+  - name: "text-processor"
+    source:
+      type: file
+      properties:
+        path: "data/input/text"
+        pattern: "*.txt"
+    transformations:
+      - type: filter
+        properties:
+          condition: "important"
+      - type: map
+        properties:
+          prefix: "processed-"
+          suffix: "-done"
+    sink:
+      type: file
+      properties:
+        path: "data/output"
+        prefix: "processed"
+        extension: ".txt"
 
-transformations:
-  - type: filter
-    properties:
-      condition: "important"
-  - type: map
-    properties:
-      prefix: "processed-"
-      suffix: "-done"
+  - name: "csv-to-csv"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-csv"
+        pattern: "*.csv"
+    transformations:
+      - type: filter
+        properties:
+          column: "status"
+          condition: "important"
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            name: "name"
+            status: "status"
+    sink:
+      type: file
+      properties:
+        path: "data/output"
+        prefix: "processed"
+        extension: ".csv"
+        includeHeaders: true
 
-sink:
-  type: file
-  properties:
-    path: "data/output"
-    prefix: "processed"
-    extension: ".txt"
+  - name: "csv-to-parquet"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-parquet"
+        pattern: "*.csv"
+    transformations:
+      - type: filter
+        properties:
+          column: "status"
+          condition: "important"
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            project: "project"
+            status: "status"
+            assignee: "assignee"
+            deadline: "deadline"
+    sink:
+      type: file
+      properties:
+        path: "data/output"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "CsvRecord",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "string"},
+              {"name": "project", "type": "string"},
+              {"name": "status", "type": "string"},
+              {"name": "assignee", "type": "string"},
+              {"name": "deadline", "type": "string"}
+            ]
+          }

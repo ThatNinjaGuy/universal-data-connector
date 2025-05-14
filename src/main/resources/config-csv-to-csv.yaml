@@ -1,7 +1,7 @@
 source:
   type: file
   properties:
-    path: "data/input"
+    path: "data/input/csv-to-csv"
     pattern: "*.csv"
 
 transformations:
