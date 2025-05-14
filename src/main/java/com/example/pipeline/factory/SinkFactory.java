@@ -12,6 +12,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import com.example.pipeline.factory.sink.ParquetSinkContext;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -131,6 +132,35 @@ public class SinkFactory {
     private static Sink<String> createFileSink(SinkConfig config) {
         Map<String, String> props = config.getProperties();
         String directory = props.get("path");
+        
+        // Create output directory if it doesn't exist
+        File outDir = new File(directory);
+        if (!outDir.exists()) {
+            outDir.mkdirs();
+            logger.info("Created output directory: {}", directory);
+        }
+        
+        String format = props.getOrDefault("format", "text");
+        
+        if ("parquet".equals(format)) {
+            String schema = props.get("schema");
+            return SinkBuilder
+                .sinkBuilder("parquet-sink", (ctx) -> new ParquetSinkContext(directory, schema))
+                .<String>receiveFn((context, item) -> {
+                    String[] parts = item.split("\\|", -1);
+                    if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
+                        String sourceFile = parts[0].substring("SOURCE=".length());
+                        String csvContent = parts[2];
+                        
+                        logger.info("Processing CSV file: {} with content:\n{}", sourceFile, csvContent);
+                        
+                        Map<String, Integer> headerMap = extractHeaders(csvContent);
+                        ((ParquetSinkContext)context).write(csvContent, headerMap, sourceFile);
+                    }
+                })
+                .destroyFn(context -> ((ParquetSinkContext)context).close())
+                .build();
+        }
         String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
 
@@ -160,6 +190,23 @@ public class SinkFactory {
             })
             .destroyFn(FileSinkContext::close)
             .build();
+    }
+
+    private static Map<String, Integer> extractHeaders(String csvContent) {
+        Map<String, Integer> headerMap = new HashMap<>();
+        String[] lines = csvContent.split("\n", -1);
+        if (lines.length > 0) {
+            String headerLine = lines[0];
+            logger.info("Found header line: {}", headerLine);
+            String[] headers = headerLine.split(",");
+            
+            for (int i = 0; i < headers.length; i++) {
+                String header = headers[i].trim();
+                headerMap.put(header, i);
+                logger.info("Mapped header '{}' to column {}", header, i);
+            }
+        }
+        return headerMap;
     }
 
     private static Sink<String> createJdbcSink(SinkConfig config) {
