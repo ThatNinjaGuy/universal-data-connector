@@ -2,38 +2,20 @@ source:
   type: file
   properties:
     path: "data/input"
-    pattern: "*.csv"
+    pattern: "*.txt" # Only process text files
 
 transformations:
   - type: filter
     properties:
-      column: "status"
       condition: "important"
   - type: map
     properties:
-      format: "csv"
-      columnMapping:
-        id: "id"
-        project: "project"
-        status: "status"
-        assignee: "assignee"
-        deadline: "deadline"
+      prefix: "processed-"
+      suffix: "-done"
 
 sink:
   type: file
   properties:
     path: "data/output"
-    format: "parquet"
-    schema: |
-      {
-        "type": "record",
-        "name": "CsvRecord",
-        "namespace": "com.example",
-        "fields": [
-          {"name": "id", "type": "string"},
-          {"name": "project", "type": "string"},
-          {"name": "status", "type": "string"},
-          {"name": "assignee", "type": "string"},
-          {"name": "deadline", "type": "string"}
-        ]
-      }
+    prefix: "processed"
+    extension: ".txt"
