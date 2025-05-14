@@ -14,13 +14,26 @@ transformations:
       format: "csv"
       columnMapping:
         id: "id"
-        name: "name"
+        project: "project"
         status: "status"
+        assignee: "assignee"
+        deadline: "deadline"
 
 sink:
   type: file
   properties:
     path: "data/output"
-    prefix: "processed"
-    extension: ".csv"
-    includeHeaders: true
+    format: "parquet"
+    schema: |
+      {
+        "type": "record",
+        "name": "CsvRecord",
+        "namespace": "com.example",
+        "fields": [
+          {"name": "id", "type": "string"},
+          {"name": "project", "type": "string"},
+          {"name": "status", "type": "string"},
+          {"name": "assignee", "type": "string"},
+          {"name": "deadline", "type": "string"}
+        ]
+      }

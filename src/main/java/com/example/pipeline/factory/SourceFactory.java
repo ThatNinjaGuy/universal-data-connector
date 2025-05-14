@@ -23,6 +23,11 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
+import java.io.File;
+import java.util.Set;
 
 public class SourceFactory {
     private static final Logger logger = LoggerFactory.getLogger(SourceFactory.class);
@@ -108,7 +113,55 @@ public class SourceFactory {
     }
 
     private static class FileSourceContext implements Serializable {
-        // Empty context class - processing moved to fillBufferFn
+        private final String directory;
+        private final String pattern;
+        private final Set<String> processedFiles = new HashSet<>();
+
+        FileSourceContext(String directory, String pattern) {
+            this.directory = directory;
+            this.pattern = pattern;
+        }
+
+        List<String> readNewFiles() {
+            List<String> items = new ArrayList<>();
+            try {
+                File dir = new File(directory);
+                File[] files = dir.listFiles((d, name) -> name.matches(pattern));
+                
+                if (files != null) {
+                    for (File file : files) {
+                        if (!processedFiles.contains(file.getName())) {
+                            // Read entire file content at once
+                            String content = Files.readString(file.toPath());
+                            
+                            // Create metadata string with source file info
+                            String item = String.format("SOURCE=%s|TYPE=%s|%s",
+                                file.getName(),
+                                file.getName().toLowerCase().endsWith(".csv") ? "CSV" : "TEXT",
+                                content);
+                            items.add(item);
+                            
+                            // Move file to processed directory
+                            File processedDir = new File("data/processed");
+                            if (!processedDir.exists()) {
+                                processedDir.mkdirs();
+                            }
+                            
+                            File destFile = new File(processedDir, file.getName());
+                            if (file.renameTo(destFile)) {
+                                processedFiles.add(file.getName());
+                                logger.info("Moved {} to processed directory", file.getName());
+                            } else {
+                                logger.error("Failed to move file {} to processed directory", file.getName());
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Failed to read files: {}", e.getMessage(), e);
+            }
+            return items;
+        }
     }
 
     public static StreamSource<String> create(SourceConfig config) {
@@ -144,52 +197,14 @@ public class SourceFactory {
         String path = config.getProperties().get("path");
         
         return SourceBuilder
-            .stream("file-source", ctx -> new FileSourceContext())
+            .stream("file-source", ctx -> new FileSourceContext(path, ".*"))
             .<String>fillBufferFn((context, buffer) -> {
-                try (var dirStream = Files.list(Paths.get(path))) {
-                    dirStream
-                        .filter(Files::isRegularFile)
-                        .forEach(file -> processFile(file, buffer));
-                } catch (IOException e) {
-                    logger.error("Failed to list files: {}", e.getMessage());
+                List<String> items = ((FileSourceContext) context).readNewFiles();
+                for (String item : items) {
+                    buffer.add(item);
                 }
-                // Add delay to prevent continuous scanning
-                Thread.sleep(1000);
             })
             .build();
-    }
-
-    private static void processFile(Path file, SourceBuilder.SourceBuffer<String> buffer) {
-        // Skip already processed files
-        if (file.getFileName().toString().startsWith(".") || 
-            Files.exists(Paths.get("data/processed", file.getFileName().toString()))) {
-            return;
-        }
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(file.toFile()))) {
-            String line;
-            String fileName = file.getFileName().toString();
-            boolean isCsv = fileName.endsWith(".csv");
-            
-            // Add metadata with file type
-            String metadataPrefix = String.format("SOURCE=%s|TYPE=%s|", 
-                fileName, 
-                isCsv ? "CSV" : "TEXT");
-
-            while ((line = reader.readLine()) != null) {
-                buffer.add(metadataPrefix + line);
-            }
-            
-            // Move file after processing
-            Path processedDir = Paths.get("data/processed");
-            if (!Files.exists(processedDir)) {
-                Files.createDirectories(processedDir);
-            }
-            Files.move(file, processedDir.resolve(fileName));
-            logger.info("Processed and moved file: {}", fileName);
-        } catch (IOException e) {
-            logger.error("Failed to process file {}: {}", file, e.getMessage());
-        }
     }
 
     private static void validateKafkaConfig(SourceConfig config) {
