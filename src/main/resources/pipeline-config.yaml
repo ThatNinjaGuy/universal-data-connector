@@ -64,8 +64,6 @@ pipelines:
             id: "id"
             project: "project"
             status: "status"
-            assignee: "assignee"
-            deadline: "deadline"
     sink:
       type: file
       properties:
@@ -84,3 +82,29 @@ pipelines:
               {"name": "deadline", "type": "string"}
             ]
           }
+
+  - name: "csv-to-postgres"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-postgres"
+        pattern: "*.csv"
+    transformations:
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "ID"
+            name: "NAME"
+            email: "EMAIL"
+            department: "DEPARTMENT"
+            salary: "SALARY"
+    sink:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "deadshot"
+        password: ""
+        table: "employee"
+        query: "INSERT INTO employee (id, name, email, department, salary) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, department = EXCLUDED.department, salary = EXCLUDED.salary"
+        batchSize: 1000
