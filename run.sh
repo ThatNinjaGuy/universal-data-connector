@@ -3,5 +3,5 @@
 # Build the application
 ./mvnw clean package
 
-# Run the application
-java -jar target/hazelcast-data-pipeline.jar pipeline-config.yaml 
+# Run the application with the config directory
+java -jar target/hazelcast-data-pipeline-1.0-SNAPSHOT.jar src/main/resources 

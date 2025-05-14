@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.io.File;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public class SourceFactory {
     private static final Logger logger = LoggerFactory.getLogger(SourceFactory.class);
@@ -114,45 +115,110 @@ public class SourceFactory {
 
     private static class FileSourceContext implements Serializable {
         private final String directory;
-        private final String pattern;
+        private final Pattern filePattern;
         private final Set<String> processedFiles = new HashSet<>();
 
         FileSourceContext(String directory, String pattern) {
             this.directory = directory;
-            this.pattern = pattern;
+            this.filePattern = convertGlobToRegex(pattern);
+            logger.info("Initialized FileSourceContext with directory: {} and pattern: {}", directory, pattern);
+        }
+
+        private static Pattern convertGlobToRegex(String glob) {
+            if (glob == null || glob.isEmpty()) {
+                return Pattern.compile(".*");
+            }
+            StringBuilder regex = new StringBuilder();
+            regex.append("^");
+            for (int i = 0; i < glob.length(); i++) {
+                char c = glob.charAt(i);
+                switch (c) {
+                    case '*' -> regex.append(".*");
+                    case '?' -> regex.append(".");
+                    case '.' -> regex.append("\\.");
+                    case '\\' -> {
+                        regex.append("\\\\");
+                        if (i + 1 < glob.length()) {
+                            regex.append(glob.charAt(++i));
+                        }
+                    }
+                    default -> regex.append(c);
+                }
+            }
+            regex.append("$");
+            return Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE);
+        }
+
+        private boolean matchesPattern(String filename) {
+            return filePattern.matcher(filename).matches();
+        }
+
+        private String detectFileType(String filename, String content) {
+            if (filename.toLowerCase().endsWith(".csv")) {
+                // Additional CSV validation
+                String[] lines = content.split("\n", 2);
+                if (lines.length > 0 && lines[0].contains(",")) {
+                    return "CSV";
+                }
+            }
+            return "TEXT";
         }
 
         List<String> readNewFiles() {
             List<String> items = new ArrayList<>();
             try {
                 File dir = new File(directory);
-                File[] files = dir.listFiles((d, name) -> name.matches(pattern));
+                if (!dir.exists()) {
+                    dir.mkdirs();
+                    logger.info("Created directory: {}", directory);
+                    return items;
+                }
+
+                if (!dir.isDirectory()) {
+                    logger.error("Path is not a directory: {}", directory);
+                    return items;
+                }
+
+                File[] files = dir.listFiles((d, name) -> {
+                    File f = new File(d, name);
+                    boolean matches = f.isFile() && matchesPattern(name);
+                    logger.debug("File {} matches pattern: {}", name, matches);
+                    return matches;
+                });
                 
                 if (files != null) {
                     for (File file : files) {
                         if (!processedFiles.contains(file.getName())) {
-                            // Read entire file content at once
-                            String content = Files.readString(file.toPath());
-                            
-                            // Create metadata string with source file info
-                            String item = String.format("SOURCE=%s|TYPE=%s|%s",
-                                file.getName(),
-                                file.getName().toLowerCase().endsWith(".csv") ? "CSV" : "TEXT",
-                                content);
-                            items.add(item);
-                            
-                            // Move file to processed directory
-                            File processedDir = new File("data/processed");
-                            if (!processedDir.exists()) {
-                                processedDir.mkdirs();
-                            }
-                            
-                            File destFile = new File(processedDir, file.getName());
-                            if (file.renameTo(destFile)) {
-                                processedFiles.add(file.getName());
-                                logger.info("Moved {} to processed directory", file.getName());
-                            } else {
-                                logger.error("Failed to move file {} to processed directory", file.getName());
+                            try {
+                                // Read entire file content at once
+                                String content = Files.readString(file.toPath());
+                                
+                                // Detect file type
+                                String fileType = detectFileType(file.getName(), content);
+                                logger.info("Detected file type {} for file {}", fileType, file.getName());
+                                
+                                // Create metadata string with source file info
+                                String item = String.format("SOURCE=%s|TYPE=%s|%s",
+                                    file.getName(),
+                                    fileType,
+                                    content);
+                                items.add(item);
+                                
+                                // Move file to processed directory
+                                File processedDir = new File("data/processed");
+                                if (!processedDir.exists()) {
+                                    processedDir.mkdirs();
+                                }
+                                
+                                File destFile = new File(processedDir, file.getName());
+                                if (file.renameTo(destFile)) {
+                                    processedFiles.add(file.getName());
+                                    logger.info("Moved {} to processed directory", file.getName());
+                                } else {
+                                    logger.error("Failed to move file {} to processed directory", file.getName());
+                                }
+                            } catch (IOException e) {
+                                logger.error("Failed to read file {}: {}", file.getName(), e.getMessage());
                             }
                         }
                     }
@@ -195,14 +261,13 @@ public class SourceFactory {
     private static StreamSource<String> createFileSource(SourceConfig config) {
         validateFileConfig(config);
         String path = config.getProperties().get("path");
+        String pattern = config.getProperties().getOrDefault("pattern", ".*");
         
         return SourceBuilder
-            .stream("file-source", ctx -> new FileSourceContext(path, ".*"))
+            .stream("file-source", ctx -> new FileSourceContext(path, pattern))
             .<String>fillBufferFn((context, buffer) -> {
                 List<String> items = ((FileSourceContext) context).readNewFiles();
-                for (String item : items) {
-                    buffer.add(item);
-                }
+                items.forEach(buffer::add);
             })
             .build();
     }

@@ -1,7 +1,7 @@
 source:
   type: file
   properties:
-    path: "data/input"
+    path: "data/input/text"
     pattern: "*.txt" # Only process text files
 
 transformations:

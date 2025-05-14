@@ -26,11 +26,17 @@ public class PipelineService {
             logger.info("Loading pipeline configuration from: {}", configFile);
             PipelineConfig config = loadConfig(configFile);
             
-            PipelineBuilder builder = new PipelineBuilder(config);
-            Pipeline pipeline = builder.build();
-            
-            jetInstance.newJob(pipeline);
-            logger.info("Pipeline started successfully");
+            if (config.getPipelines() == null || config.getPipelines().isEmpty()) {
+                throw new IllegalArgumentException("No pipelines defined in configuration");
+            }
+
+            for (PipelineConfig.Pipeline pipelineConfig : config.getPipelines()) {
+                logger.info("Starting pipeline: {}", pipelineConfig.getName());
+                PipelineBuilder builder = new PipelineBuilder(pipelineConfig);
+                Pipeline pipeline = builder.build();
+                jetInstance.newJob(pipeline);
+                logger.info("Pipeline {} started successfully", pipelineConfig.getName());
+            }
         } catch (Exception e) {
             throw new RuntimeException("Pipeline execution failed: " + e.getMessage(), e);
         }

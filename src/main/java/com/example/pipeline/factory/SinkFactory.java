@@ -132,14 +132,6 @@ public class SinkFactory {
     private static Sink<String> createFileSink(SinkConfig config) {
         Map<String, String> props = config.getProperties();
         String directory = props.get("path");
-        
-        // Create output directory if it doesn't exist
-        File outDir = new File(directory);
-        if (!outDir.exists()) {
-            outDir.mkdirs();
-            logger.info("Created output directory: {}", directory);
-        }
-        
         String format = props.getOrDefault("format", "text");
         
         if ("parquet".equals(format)) {
@@ -161,33 +153,14 @@ public class SinkFactory {
                 .destroyFn(context -> ((ParquetSinkContext)context).close())
                 .build();
         }
+        
         String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
+        boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
 
         return SinkBuilder
-            .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension))
-            .<String>receiveFn((FileSinkContext context, String item) -> {
-                // Parse metadata
-                String[] parts = item.split("\\|");
-                String sourceFile = parts[0].substring("SOURCE=".length());
-                String fileType = parts[1].substring("TYPE=".length());
-                String content = parts[2];
-                
-                // Create output filename
-                String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
-                String outputFile = String.format("%s/%s_%s_%s%s",
-                    directory, prefix, 
-                    sourceFile.replace(fileType.equals("CSV") ? ".csv" : ".txt", ""),
-                    timestamp,
-                    fileType.equals("CSV") ? ".csv" : ".txt");
-                
-                // Add appropriate suffix for text files
-                if (fileType.equals("TEXT")) {
-                    content = "processed-" + content + "-done";
-                }
-                
-                context.write(outputFile, content + "\n");
-            })
+            .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension, includeHeaders))
+            .<String>receiveFn(FileSinkContext::write)
             .destroyFn(FileSinkContext::close)
             .build();
     }
@@ -222,22 +195,72 @@ public class SinkFactory {
         private final String directory;
         private final String prefix;
         private final String extension;
+        private final boolean includeHeaders;
         private final Map<String, BufferedWriter> writers = new HashMap<>();
         private final Set<String> processedFiles = new HashSet<>();
 
-        FileSinkContext(String directory, String prefix, String extension) {
+        FileSinkContext(String directory, String prefix, String extension, boolean includeHeaders) {
             this.directory = directory;
             this.prefix = prefix;
             this.extension = extension;
+            this.includeHeaders = includeHeaders;
         }
 
-        void write(String filename, String item) {
+        void write(String item) {
             try {
-                BufferedWriter writer = writers.computeIfAbsent(filename, this::createWriter);
-                writer.write(item);
-                writer.flush();
+                String[] parts = item.split("\\|", -1);
+                if (parts.length < 3) {
+                    logger.error("Invalid item format: {}", item);
+                    return;
+                }
+                
+                String sourceFile = parts[0].substring("SOURCE=".length());
+                String fileType = parts[1].substring("TYPE=".length());
+                String content = parts[2];
+                
+                // Create output filename
+                String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
+                String outputFile = String.format("%s/%s_%s_%s%s",
+                    directory, prefix, 
+                    sourceFile.replace(fileType.equals("CSV") ? ".csv" : ".txt", ""),
+                    timestamp,
+                    extension);
+                
+                logger.info("Processing {} file: {} -> {}", fileType, sourceFile, outputFile);
+                
+                if (fileType.equals("TEXT")) {
+                    // Text file processing
+                    content = "processed-" + content + "-done";
+                    BufferedWriter writer = writers.computeIfAbsent(outputFile, this::createWriter);
+                    writer.write(content + "\n");
+                    writer.flush();
+                } else if (fileType.equals("CSV")) {
+                    // CSV file processing
+                    String[] lines = content.split("\n", -1);
+                    if (lines.length > 0) {
+                        StringBuilder processedContent = new StringBuilder();
+                        
+                        // Handle headers
+                        if (includeHeaders && lines.length > 0) {
+                            processedContent.append(lines[0]).append("\n");
+                        }
+                        
+                        // Process data rows
+                        for (int i = 1; i < lines.length; i++) {
+                            String line = lines[i].trim();
+                            if (!line.isEmpty()) {
+                                processedContent.append(line).append("\n");
+                            }
+                        }
+                        
+                        BufferedWriter writer = writers.computeIfAbsent(outputFile, this::createWriter);
+                        writer.write(processedContent.toString());
+                        writer.flush();
+                        logger.info("Wrote processed CSV content to: {}", outputFile);
+                    }
+                }
             } catch (IOException e) {
-                logger.error("Failed to write to file: {}", e.getMessage());
+                logger.error("Error processing item: {}", e.getMessage());
                 throw new RuntimeException(e);
             }
         }

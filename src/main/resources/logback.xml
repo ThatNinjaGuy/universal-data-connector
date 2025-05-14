@@ -17,6 +17,11 @@
         </encoder>
     </appender>
 
+    <!-- Set specific logging levels for our pipeline components -->
+    <logger name="com.example.pipeline.factory" level="DEBUG"/>
+    <logger name="com.example.pipeline.service" level="DEBUG"/>
+    <logger name="com.example.pipeline.pipeline" level="DEBUG"/>
+
     <root level="INFO">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE" />
