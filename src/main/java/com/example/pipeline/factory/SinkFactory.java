@@ -183,11 +183,46 @@ public class SinkFactory {
     }
 
     private static Sink<String> createJdbcSink(SinkConfig config) {
-        String query = "INSERT INTO " + config.getProperties().get("table") + " (value) VALUES (?)";
+        Map<String, String> props = config.getProperties();
+        String query = props.get("query");
+        logger.info("Creating JDBC sink with query: {}", query);
+        
         return Sinks.jdbc(
             query,
-            config.getProperties().get("jdbcUrl"),
-            (stmt, item) -> stmt.setString(1, item)
+            props.get("jdbcUrl"),
+            (stmt, item) -> {
+                try {
+                    String[] parts = item.split("\\|", -1);
+                    if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
+                        String csvContent = parts[2];
+                        String[] lines = csvContent.split("\n", -1);
+                        
+                        if (lines.length > 1) {
+                            // Process all rows except header
+                            for (int rowNum = 1; rowNum < lines.length; rowNum++) {
+                                String line = lines[rowNum].trim();
+                                if (!line.isEmpty()) {
+                                    String[] values = line.split(",", -1);
+                                    logger.debug("Processing row {}: {}", rowNum, line);
+                                    
+                                    // Map values to prepared statement parameters
+                                    stmt.setInt(1, Integer.parseInt(values[0].trim())); // id
+                                    stmt.setString(2, values[1].trim()); // name
+                                    stmt.setString(3, values[2].trim()); // email
+                                    stmt.setString(4, values[3].trim()); // department
+                                    stmt.setDouble(5, Double.parseDouble(values[4].trim())); // salary
+                                    
+                                    stmt.addBatch();
+                                    logger.debug("Added row to batch: {}", line);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("Error preparing JDBC statement: {}", e.getMessage());
+                    throw new RuntimeException("Failed to prepare JDBC statement", e);
+                }
+            }
         );
     }
 
