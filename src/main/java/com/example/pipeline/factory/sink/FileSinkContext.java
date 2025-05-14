@@ -1,4 +1,4 @@
-package com.example.pipeline.factory;
+package com.example.pipeline.factory.sink;
 
 import java.io.BufferedWriter;
 import java.io.FileWriter;

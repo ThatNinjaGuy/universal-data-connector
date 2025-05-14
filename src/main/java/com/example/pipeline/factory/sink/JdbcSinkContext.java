@@ -1,4 +1,4 @@
-package com.example.pipeline.factory;
+package com.example.pipeline.factory.sink;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
