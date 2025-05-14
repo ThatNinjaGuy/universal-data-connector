@@ -25,6 +25,7 @@ import java.io.File;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
+import java.lang.StringBuilder;
 
 public class SinkFactory {
     private static final Logger logger = LoggerFactory.getLogger(SinkFactory.class);
@@ -136,24 +137,55 @@ public class SinkFactory {
         String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
         boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
+        boolean isJdbcMode = Boolean.parseBoolean(props.getOrDefault("jdbcMode", "false"));
 
         if ("parquet".equals(format)) {
             String schema = props.get("schema");
+            // Create a timestamp once for the entire sink to avoid multiple files
+            String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
+            String sourceFile = String.format("postgres_export_%s", timestamp);
+            
             return SinkBuilder
-                .sinkBuilder("parquet-sink", (ctx) -> new ParquetSinkContext(directory, schema))
+                .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema))
                 .<String>receiveFn((context, item) -> {
-                    String[] parts = item.split("\\|", -1);
-                    if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
-                        String sourceFile = parts[0].substring("SOURCE=".length());
-                        String csvContent = parts[2];
-                        
-                        logger.info("Processing CSV file: {} with content:\n{}", sourceFile, csvContent);
-                        
-                        Map<String, Integer> headerMap = extractHeaders(csvContent);
-                        ((ParquetSinkContext)context).write(csvContent, headerMap, sourceFile);
+                    if (isJdbcMode) {
+                        // JDBC data comes as complete CSV content
+                        String formattedItem = "JDBC_SOURCE|TYPE=CSV|" + item;
+                        ((ParquetSinkContext)context).write(formattedItem);
+                    } else {
+                        // Existing file-based processing
+                        // Process only if we have valid data
+                        if (item != null && !item.isEmpty()) {
+                            logger.info("Received item for Parquet processing: {}", item);
+                            
+                            // Format the item with metadata if it doesn't already have it
+                            String formattedItem;
+                            if (!item.startsWith("SOURCE=")) {
+                                String[] lines = item.split("\n", -1);
+                                StringBuilder csvContent = new StringBuilder();
+                                for (String line : lines) {
+                                    csvContent.append(line).append("\n");
+                                }
+                                formattedItem = String.format("SOURCE=%s|TYPE=CSV|%s", sourceFile, csvContent.toString().trim());
+                            } else {
+                                formattedItem = item;
+                            }
+                            
+                            logger.debug("Writing formatted item to Parquet: {}", formattedItem);
+                            ((ParquetSinkContext)context).write(formattedItem);
+                        }
                     }
                 })
-                .destroyFn(context -> ((ParquetSinkContext)context).close())
+                .destroyFn(context -> {
+                    try {
+                        logger.info("Destroying ParquetSinkContext, closing all writers");
+                        ((ParquetSinkContext)context).close();
+                        logger.info("Successfully destroyed ParquetSinkContext");
+                    } catch (Exception e) {
+                        logger.error("Error destroying ParquetSinkContext: {}", e.getMessage(), e);
+                        throw e;
+                    }
+                })
                 .build();
         }
 
@@ -162,23 +194,6 @@ public class SinkFactory {
             .<String>receiveFn(FileSinkContext::write)
             .destroyFn(FileSinkContext::close)
             .build();
-    }
-
-    private static Map<String, Integer> extractHeaders(String csvContent) {
-        Map<String, Integer> headerMap = new HashMap<>();
-        String[] lines = csvContent.split("\n", -1);
-        if (lines.length > 0) {
-            String headerLine = lines[0];
-            logger.info("Found header line: {}", headerLine);
-            String[] headers = headerLine.split(",");
-            
-            for (int i = 0; i < headers.length; i++) {
-                String header = headers[i].trim();
-                headerMap.put(header, i);
-                logger.info("Mapped header '{}' to column {}", header, i);
-            }
-        }
-        return headerMap;
     }
 
     private static Sink<String> createJdbcSink(SinkConfig config) {

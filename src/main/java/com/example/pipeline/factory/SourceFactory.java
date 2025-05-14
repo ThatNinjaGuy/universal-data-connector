@@ -5,6 +5,7 @@ import com.example.pipeline.factory.source.JdbcSourceContext;
 import com.hazelcast.jet.pipeline.StreamSource;
 import com.hazelcast.jet.pipeline.Sources;
 import com.hazelcast.jet.pipeline.SourceBuilder;
+import com.hazelcast.jet.pipeline.BatchSource;
 import com.hazelcast.jet.core.Processor;
 import com.hazelcast.function.FunctionEx;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -277,15 +278,25 @@ public class SourceFactory {
 
     private static StreamSource<String> createJdbcSource(SourceConfig config) {
         validateJdbcConfig(config);
+        Map<String, String> properties = config.getProperties();
         
         return SourceBuilder
-            .stream("jdbc-source", ctx -> new JdbcSourceContext(config.getProperties()))
+            .stream("jdbc-source", ctx -> new JdbcSourceContext(properties))
             .<String>fillBufferFn((context, buffer) -> {
                 try {
                     List<String> batch = ((JdbcSourceContext) context).readBatch();
-                    batch.forEach(buffer::add);
+                    if (!batch.isEmpty()) {
+                        batch.forEach(buffer::add);
+                    } else {
+                        // If no more records and it's a one-time operation, sleep to avoid busy polling
+                        if (Boolean.parseBoolean(properties.getOrDefault("oneTimeOperation", "false"))) {
+                            Thread.sleep(Long.MAX_VALUE);
+                        }
+                    }
                 } catch (SQLException e) {
                     throw new RuntimeException("Failed to read from database: " + e.getMessage(), e);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
             })
             .destroyFn(context -> {

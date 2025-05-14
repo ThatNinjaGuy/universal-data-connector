@@ -28,52 +28,129 @@ public class JdbcSourceContext implements Serializable, AutoCloseable {
         this.query = properties.getOrDefault("query", "SELECT * FROM " + properties.get("table"));
         this.batchSize = Integer.parseInt(properties.getOrDefault("batchSize", "1000"));
 
-        logger.info("Initializing JDBC source with query: {} and batch size: {}", query, batchSize);
-        connection = DriverManager.getConnection(jdbcUrl, user, password);
-        statement = connection.prepareStatement(query, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-        resultSet = statement.executeQuery();
-        metaData = resultSet.getMetaData();
+        logger.info("Initializing JDBC source with URL: {}, query: {}, batch size: {}", jdbcUrl, query, batchSize);
         
-        columnNames = new ArrayList<>();
-        for (int i = 1; i <= metaData.getColumnCount(); i++) {
-            columnNames.add(metaData.getColumnName(i));
+        try {
+            connection = DriverManager.getConnection(jdbcUrl, user, password);
+            logger.info("Successfully established database connection");
+            
+            // Validate the connection
+            if (!connection.isValid(5)) {
+                throw new SQLException("Database connection is invalid");
+            }
+            
+            // Test the query first
+            try (Statement testStmt = connection.createStatement()) {
+                ResultSet testRs = testStmt.executeQuery("EXPLAIN " + query);
+                logger.info("Query plan validation successful");
+            }
+            
+            // Get total count
+            try (Statement countStmt = connection.createStatement()) {
+                ResultSet countRs = countStmt.executeQuery("SELECT COUNT(*) FROM (" + query + ") as temp");
+                if (countRs.next()) {
+                    long totalRows = countRs.getLong(1);
+                    logger.info("Total rows to be fetched: {}", totalRows);
+                }
+            }
+            
+            statement = connection.prepareStatement(query, 
+                ResultSet.TYPE_SCROLL_INSENSITIVE, 
+                ResultSet.CONCUR_READ_ONLY);
+            resultSet = statement.executeQuery();
+            metaData = resultSet.getMetaData();
+            
+            columnNames = new ArrayList<>();
+            StringBuilder columnTypes = new StringBuilder();
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                String columnName = metaData.getColumnName(i);
+                columnNames.add(columnName.toLowerCase());
+                columnTypes.append(columnName)
+                         .append("(")
+                         .append(metaData.getColumnTypeName(i))
+                         .append("), ");
+            }
+            logger.info("Initialized statement with columns and types: {}", columnTypes);
+            
+            // Position cursor at the beginning
+            resultSet.beforeFirst();
+            
+        } catch (SQLException e) {
+            logger.error("Failed to initialize JDBC source: {}", e.getMessage(), e);
+            throw e;
         }
-        logger.debug("Initialized statement with columns: {}", columnNames);
     }
 
     public List<String> readBatch() throws SQLException {
         List<String> batch = new ArrayList<>();
-        
-        // Add headers as first row if this is the first batch
-        if (isFirstBatch) {
-            StringJoiner headerJoiner = new StringJoiner(",");
-            for (String columnName : columnNames) {
-                headerJoiner.add(columnName);
-            }
-            batch.add(headerJoiner.toString());
-            isFirstBatch = false;
-            logger.debug("Added headers to first batch: {}", columnNames);
-        }
-
-        // Read rows
-        int count = 0;
-        while (count < batchSize && resultSet.next()) {
-            StringJoiner rowJoiner = new StringJoiner(",");
-            for (int i = 1; i <= metaData.getColumnCount(); i++) {
-                String value = resultSet.getString(i);
-                // Handle null values and escape commas
-                if (value == null) {
-                    value = "";
-                } else if (value.contains(",")) {
-                    value = "\"" + value.replace("\"", "\"\"") + "\"";
+        try {
+            StringJoiner csvContent = new StringJoiner("\n");
+            
+            if (isFirstBatch) {
+                // Add headers
+                StringJoiner headerJoiner = new StringJoiner(",");
+                for (String columnName : columnNames) {
+                    headerJoiner.add(columnName);
                 }
-                rowJoiner.add(value);
+                csvContent.add(headerJoiner.toString());
+                isFirstBatch = false;
             }
-            batch.add(rowJoiner.toString());
-            count++;
+
+            int count = 0;
+            while (count < batchSize && resultSet.next()) {
+                StringJoiner rowJoiner = new StringJoiner(",");
+                for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                    String value;
+                    int columnType = metaData.getColumnType(i);
+                    
+                    // Handle different SQL types appropriately
+                    if (resultSet.getObject(i) == null) {
+                        value = "";
+                    } else {
+                        switch (columnType) {
+                            case Types.TIMESTAMP:
+                            case Types.DATE:
+                            case Types.TIME:
+                                value = resultSet.getObject(i).toString();
+                                break;
+                            case Types.NUMERIC:
+                            case Types.DECIMAL:
+                            case Types.DOUBLE:
+                            case Types.FLOAT:
+                                value = String.valueOf(resultSet.getBigDecimal(i));
+                                break;
+                            case Types.INTEGER:
+                            case Types.BIGINT:
+                            case Types.SMALLINT:
+                                value = String.valueOf(resultSet.getLong(i));
+                                break;
+                            case Types.BOOLEAN:
+                                value = String.valueOf(resultSet.getBoolean(i));
+                                break;
+                            default:
+                                value = resultSet.getString(i);
+                        }
+                    }
+                    
+                    // Handle CSV escaping
+                    if (value != null && (value.contains(",") || value.contains("\"") || value.contains("\n"))) {
+                        value = "\"" + value.replace("\"", "\"\"") + "\"";
+                    }
+                    
+                    rowJoiner.add(value);
+                }
+                csvContent.add(rowJoiner.toString());
+                count++;
+            }
+            
+            if (count > 0) {
+                batch.add(csvContent.toString());
+                logger.info("Emitting CSV content with {} rows", count);
+            }
+        } catch (SQLException e) {
+            logger.error("Error reading batch: {}", e.getMessage(), e);
+            throw e;
         }
-        
-        logger.debug("Read {} rows in current batch", count);
         return batch;
     }
 

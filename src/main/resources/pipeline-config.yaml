@@ -119,6 +119,7 @@ pipelines:
         table: "employee"
         query: "SELECT id, name, email, department, salary FROM employee ORDER BY id"
         batchSize: 1000
+        oneTimeOperation: true
     transformations:
       - type: map
         properties:
@@ -136,3 +137,44 @@ pipelines:
         prefix: "employee_export"
         extension: ".csv"
         includeHeaders: true
+
+  - name: "postgres-to-parquet"
+    source:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "deadshot"
+        password: ""
+        table: "employee"
+        query: "SELECT id, name, email, department, salary FROM employee ORDER BY id"
+        batchSize: 1000
+        oneTimeOperation: true
+    transformations:
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            name: "name"
+            email: "email"
+            department: "department"
+            salary: "salary"
+    sink:
+      type: file
+      properties:
+        path: "data/output"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "Employee",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "int"},
+              {"name": "name", "type": "string"},
+              {"name": "email", "type": "string"},
+              {"name": "department", "type": "string"},
+              {"name": "salary", "type": "double"}
+            ]
+          }
+        jdbcMode: true
