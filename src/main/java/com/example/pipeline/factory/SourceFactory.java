@@ -1,6 +1,7 @@
 package com.example.pipeline.factory;
 
 import com.example.pipeline.config.SourceConfig;
+import com.example.pipeline.factory.source.JdbcSourceContext;
 import com.hazelcast.jet.pipeline.StreamSource;
 import com.hazelcast.jet.pipeline.Sources;
 import com.hazelcast.jet.pipeline.SourceBuilder;
@@ -20,6 +21,7 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
@@ -239,6 +241,7 @@ public class SourceFactory {
             return switch (config.getType().toLowerCase()) {
                 case "kafka" -> createKafkaSource(config);
                 case "file" -> createFileSource(config);
+                case "jdbc" -> createJdbcSource(config);
                 default -> throw new IllegalArgumentException("Unknown source type: " + config.getType());
             };
         } catch (Exception e) {
@@ -272,6 +275,29 @@ public class SourceFactory {
             .build();
     }
 
+    private static StreamSource<String> createJdbcSource(SourceConfig config) {
+        validateJdbcConfig(config);
+        
+        return SourceBuilder
+            .stream("jdbc-source", ctx -> new JdbcSourceContext(config.getProperties()))
+            .<String>fillBufferFn((context, buffer) -> {
+                try {
+                    List<String> batch = ((JdbcSourceContext) context).readBatch();
+                    batch.forEach(buffer::add);
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to read from database: " + e.getMessage(), e);
+                }
+            })
+            .destroyFn(context -> {
+                try {
+                    ((JdbcSourceContext) context).close();
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to close JDBC source: " + e.getMessage(), e);
+                }
+            })
+            .build();
+    }
+
     private static void validateKafkaConfig(SourceConfig config) {
         if (!config.getProperties().containsKey("bootstrapServers")) {
             throw new IllegalArgumentException("Kafka source requires 'bootstrapServers' property");
@@ -284,6 +310,18 @@ public class SourceFactory {
     private static void validateFileConfig(SourceConfig config) {
         if (!config.getProperties().containsKey("path")) {
             throw new IllegalArgumentException("File source requires 'path' property");
+        }
+    }
+
+    private static void validateJdbcConfig(SourceConfig config) {
+        if (!config.getProperties().containsKey("jdbcUrl")) {
+            throw new IllegalArgumentException("JDBC source requires 'jdbcUrl' property");
+        }
+        if (!config.getProperties().containsKey("user")) {
+            throw new IllegalArgumentException("JDBC source requires 'user' property");
+        }
+        if (!config.getProperties().containsKey("table") && !config.getProperties().containsKey("query")) {
+            throw new IllegalArgumentException("JDBC source requires either 'table' or 'query' property");
         }
     }
 } 

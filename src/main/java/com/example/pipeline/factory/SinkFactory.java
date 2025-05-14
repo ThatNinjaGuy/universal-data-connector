@@ -133,7 +133,10 @@ public class SinkFactory {
         Map<String, String> props = config.getProperties();
         String directory = props.get("path");
         String format = props.getOrDefault("format", "text");
-        
+        String prefix = props.getOrDefault("prefix", "output");
+        String extension = props.getOrDefault("extension", ".txt");
+        boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
+
         if ("parquet".equals(format)) {
             String schema = props.get("schema");
             return SinkBuilder
@@ -153,10 +156,6 @@ public class SinkFactory {
                 .destroyFn(context -> ((ParquetSinkContext)context).close())
                 .build();
         }
-        
-        String prefix = props.getOrDefault("prefix", "output");
-        String extension = props.getOrDefault("extension", ".txt");
-        boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
 
         return SinkBuilder
             .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension, includeHeaders))
@@ -231,112 +230,49 @@ public class SinkFactory {
         private final String prefix;
         private final String extension;
         private final boolean includeHeaders;
-        private final Map<String, BufferedWriter> writers = new HashMap<>();
-        private final Set<String> processedFiles = new HashSet<>();
+        private BufferedWriter writer;
+        private boolean isFirstWrite = true;
 
         FileSinkContext(String directory, String prefix, String extension, boolean includeHeaders) {
             this.directory = directory;
             this.prefix = prefix;
             this.extension = extension;
             this.includeHeaders = includeHeaders;
+            
+            // Create output directory if it doesn't exist
+            File dir = new File(directory);
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
         }
 
         void write(String item) {
             try {
-                String[] parts = item.split("\\|", -1);
-                if (parts.length < 3) {
-                    logger.error("Invalid item format: {}", item);
-                    return;
+                if (writer == null) {
+                    String timestamp = String.format("%1$tY%1$tm%1$td_%1$tH%1$tM%1$tS", new Date());
+                    String filename = String.format("%s_%s%s", prefix, timestamp, extension);
+                    File outputFile = new File(directory, filename);
+                    writer = new BufferedWriter(new FileWriter(outputFile));
+                    logger.info("Created new CSV file: {}", outputFile.getAbsolutePath());
                 }
-                
-                String sourceFile = parts[0].substring("SOURCE=".length());
-                String fileType = parts[1].substring("TYPE=".length());
-                String content = parts[2];
-                
-                // Create output filename
-                String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
-                String outputFile = String.format("%s/%s_%s_%s%s",
-                    directory, prefix, 
-                    sourceFile.replace(fileType.equals("CSV") ? ".csv" : ".txt", ""),
-                    timestamp,
-                    extension);
-                
-                logger.info("Processing {} file: {} -> {}", fileType, sourceFile, outputFile);
-                
-                if (fileType.equals("TEXT")) {
-                    // Text file processing
-                    content = "processed-" + content + "-done";
-                    BufferedWriter writer = writers.computeIfAbsent(outputFile, this::createWriter);
-                    writer.write(content + "\n");
-                    writer.flush();
-                } else if (fileType.equals("CSV")) {
-                    // CSV file processing
-                    String[] lines = content.split("\n", -1);
-                    if (lines.length > 0) {
-                        StringBuilder processedContent = new StringBuilder();
-                        
-                        // Handle headers
-                        if (includeHeaders && lines.length > 0) {
-                            processedContent.append(lines[0]).append("\n");
-                        }
-                        
-                        // Process data rows
-                        for (int i = 1; i < lines.length; i++) {
-                            String line = lines[i].trim();
-                            if (!line.isEmpty()) {
-                                processedContent.append(line).append("\n");
-                            }
-                        }
-                        
-                        BufferedWriter writer = writers.computeIfAbsent(outputFile, this::createWriter);
-                        writer.write(processedContent.toString());
-                        writer.flush();
-                        logger.info("Wrote processed CSV content to: {}", outputFile);
-                    }
-                }
-            } catch (IOException e) {
-                logger.error("Error processing item: {}", e.getMessage());
-                throw new RuntimeException(e);
-            }
-        }
 
-        private BufferedWriter createWriter(String filename) {
-            try {
-                return new BufferedWriter(new FileWriter(filename, true));
+                writer.write(item);
+                writer.newLine();
+                writer.flush();
             } catch (IOException e) {
-                logger.error("Failed to create writer for file: {}", e.getMessage());
-                throw new RuntimeException(e);
+                logger.error("Failed to write to file: {}", e.getMessage());
+                throw new RuntimeException("Failed to write to file", e);
             }
         }
 
         void close() {
-            writers.values().forEach(writer -> {
-                try {
+            try {
+                if (writer != null) {
                     writer.close();
-                } catch (IOException e) {
-                    logger.error("Failed to close writer: {}", e.getMessage());
+                    writer = null;
                 }
-            });
-            writers.clear();
-        }
-
-        String getSourceFile(String item) {
-            // This should be enhanced to get actual source file info from your pipeline
-            return "data/input/test.txt"; // Placeholder - needs actual implementation
-        }
-
-        void moveToProcessed(String sourceFile) {
-            if (!processedFiles.contains(sourceFile)) {
-                try {
-                    File source = new File(sourceFile);
-                    File dest = new File("data/processed/" + source.getName());
-                    if (source.renameTo(dest)) {
-                        processedFiles.add(sourceFile);
-                        logger.info("Moved {} to processed directory", source.getName());
-                    }
-                } catch (Exception e) {
-                    logger.error("Failed to move file: {}", e.getMessage());
-                }
+            } catch (IOException e) {
+                logger.error("Failed to close writer: {}", e.getMessage());
             }
         }
     }
