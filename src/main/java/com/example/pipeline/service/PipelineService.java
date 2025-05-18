@@ -2,7 +2,8 @@ package com.example.pipeline.service;
 
 import com.example.pipeline.config.PipelineConfig;
 import com.example.pipeline.pipeline.PipelineBuilder;
-import com.hazelcast.jet.JetInstance;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.jet.JetService;
 import com.hazelcast.jet.pipeline.Pipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,10 +16,10 @@ import java.io.InputStream;
 @Service
 public class PipelineService {
     private static final Logger logger = LoggerFactory.getLogger(PipelineService.class);
-    private final JetInstance jetInstance;
+    private final JetService jetService;
 
-    public PipelineService(JetInstance jetInstance) {
-        this.jetInstance = jetInstance;
+    public PipelineService(HazelcastInstance hazelcastInstance) {
+        this.jetService = hazelcastInstance.getJet();
     }
 
     public void startPipeline(String configFile) {
@@ -33,8 +34,8 @@ public class PipelineService {
             for (PipelineConfig.Pipeline pipelineConfig : config.getPipelines()) {
                 logger.info("Starting pipeline: {}", pipelineConfig.getName());
                 PipelineBuilder builder = new PipelineBuilder(pipelineConfig);
-                Pipeline pipeline = builder.build();
-                jetInstance.newJob(pipeline);
+                Pipeline pipeline = builder.build();      
+                jetService.newJob(pipeline);
                 logger.info("Pipeline {} started successfully", pipelineConfig.getName());
             }
         } catch (Exception e) {

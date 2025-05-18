@@ -116,17 +116,39 @@ public class SourceFactory {
         }
     }
 
+    /**
+     * Context class for file-based source operations. Handles continuous monitoring of a directory
+     * for new files matching a specified pattern. Files are processed once and moved to a processed
+     * directory to prevent duplicate processing.
+     */
     private static class FileSourceContext implements Serializable {
         private final String directory;
         private final Pattern filePattern;
-        private final Set<String> processedFiles = new HashSet<>();
+        // Static set to maintain processed files across context instances
+        // This ensures files are only processed once even if the context is recreated
+        private static final Set<String> processedFiles = new HashSet<>();
+        private static final Logger logger = LoggerFactory.getLogger(FileSourceContext.class);
 
+        /**
+         * Initializes the file source context with a directory to monitor and a file pattern to match.
+         * The pattern supports glob-style wildcards (e.g., "*.csv", "data_*.txt").
+         *
+         * @param directory The directory path to monitor for new files
+         * @param pattern The glob pattern to match files against
+         */
         FileSourceContext(String directory, String pattern) {
             this.directory = directory;
             this.filePattern = convertGlobToRegex(pattern);
             logger.info("Initialized FileSourceContext with directory: {} and pattern: {}", directory, pattern);
         }
 
+        /**
+         * Converts a glob pattern to a regular expression pattern.
+         * Supports common glob wildcards: * (any sequence), ? (single character)
+         *
+         * @param glob The glob pattern to convert
+         * @return A compiled Pattern object for matching filenames
+         */
         private static Pattern convertGlobToRegex(String glob) {
             if (glob == null || glob.isEmpty()) {
                 return Pattern.compile(".*");
@@ -152,10 +174,25 @@ public class SourceFactory {
             return Pattern.compile(regex.toString(), Pattern.CASE_INSENSITIVE);
         }
 
+        /**
+         * Checks if a filename matches the configured pattern.
+         *
+         * @param filename The filename to check
+         * @return true if the filename matches the pattern, false otherwise
+         */
         private boolean matchesPattern(String filename) {
             return filePattern.matcher(filename).matches();
         }
 
+        /**
+         * Detects the type of file based on its extension and content.
+         * Currently supports CSV files (based on extension and header presence)
+         * and defaults to TEXT for all other files.
+         *
+         * @param filename The name of the file
+         * @param content The content of the file
+         * @return The detected file type ("CSV" or "TEXT")
+         */
         private String detectFileType(String filename, String content) {
             if (filename.toLowerCase().endsWith(".csv")) {
                 // Additional CSV validation
@@ -167,6 +204,17 @@ public class SourceFactory {
             return "TEXT";
         }
 
+        /**
+         * Reads and processes new files from the monitored directory.
+         * This method:
+         * 1. Scans the directory for files matching the pattern
+         * 2. Skips already processed files
+         * 3. Reads and processes new files
+         * 4. Moves processed files to a 'processed' subdirectory
+         * 5. Returns the processed content with metadata
+         *
+         * @return List of processed file contents with metadata
+         */
         List<String> readNewFiles() {
             List<String> items = new ArrayList<>();
             try {
@@ -182,6 +230,7 @@ public class SourceFactory {
                     return items;
                 }
 
+                // List files matching the pattern
                 File[] files = dir.listFiles((d, name) -> {
                     File f = new File(d, name);
                     boolean matches = f.isFile() && matchesPattern(name);
@@ -191,38 +240,43 @@ public class SourceFactory {
                 
                 if (files != null) {
                     for (File file : files) {
-                        if (!processedFiles.contains(file.getName())) {
+                        String fileName = file.getName();
+                        // Skip if file has already been processed
+                        if (!processedFiles.contains(fileName)) {
                             try {
                                 // Read entire file content at once
                                 String content = Files.readString(file.toPath());
                                 
                                 // Detect file type
-                                String fileType = detectFileType(file.getName(), content);
-                                logger.info("Detected file type {} for file {}", fileType, file.getName());
+                                String fileType = detectFileType(fileName, content);
+                                logger.info("Processing file {} of type {}", fileName, fileType);
                                 
                                 // Create metadata string with source file info
+                                // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
                                 String item = String.format("SOURCE=%s|TYPE=%s|%s",
-                                    file.getName(),
+                                    fileName,
                                     fileType,
                                     content);
                                 items.add(item);
                                 
-                                // Move file to processed directory
+                                // Move file to processed directory to prevent reprocessing
                                 File processedDir = new File("data/processed");
                                 if (!processedDir.exists()) {
                                     processedDir.mkdirs();
                                 }
                                 
-                                File destFile = new File(processedDir, file.getName());
+                                File destFile = new File(processedDir, fileName);
                                 if (file.renameTo(destFile)) {
-                                    processedFiles.add(file.getName());
-                                    logger.info("Moved {} to processed directory", file.getName());
+                                    processedFiles.add(fileName);
+                                    logger.info("Successfully processed and moved {} to processed directory", fileName);
                                 } else {
-                                    logger.error("Failed to move file {} to processed directory", file.getName());
+                                    logger.error("Failed to move file {} to processed directory", fileName);
                                 }
                             } catch (IOException e) {
-                                logger.error("Failed to read file {}: {}", file.getName(), e.getMessage());
+                                logger.error("Failed to read file {}: {}", fileName, e.getMessage());
                             }
+                        } else {
+                            logger.debug("File {} has already been processed, skipping", fileName);
                         }
                     }
                 }
@@ -242,7 +296,7 @@ public class SourceFactory {
             return switch (config.getType().toLowerCase()) {
                 case "kafka" -> createKafkaSource(config);
                 case "file" -> createFileSource(config);
-                case "jdbc" -> createJdbcSource(config);
+                case "jdbc" -> createJdbcSource(config); 
                 default -> throw new IllegalArgumentException("Unknown source type: " + config.getType());
             };
         } catch (Exception e) {

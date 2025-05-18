@@ -26,18 +26,6 @@ pipelines:
       properties:
         path: "data/input/csv-to-csv"
         pattern: "*.csv"
-    transformations:
-      - type: filter
-        properties:
-          column: "status"
-          condition: "important"
-      - type: map
-        properties:
-          format: "csv"
-          columnMapping:
-            id: "id"
-            name: "name"
-            status: "status"
     sink:
       type: file
       properties:
@@ -69,6 +57,7 @@ pipelines:
       properties:
         path: "data/output"
         format: "parquet"
+        batchSize: 10
         schema: |
           {
             "type": "record",
@@ -164,6 +153,7 @@ pipelines:
       properties:
         path: "data/output"
         format: "parquet"
+        batchSize: 1000
         schema: |
           {
             "type": "record",

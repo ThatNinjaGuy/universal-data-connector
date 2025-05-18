@@ -1,6 +1,20 @@
 # Universal Data Connector
 
-A flexible data pipeline built with Hazelcast Jet that supports various sources and sinks with configurable transformations.
+A flexible and extensible data pipeline built with Hazelcast Jet that supports various data sources and sinks with configurable transformations. The application uses a factory pattern to create and manage different types of data sources and sinks, making it easy to add new connectors.
+
+## Architecture
+
+The application follows a factory-based architecture:
+
+- `SourceFactory`: Creates and manages different types of data sources
+  - Kafka Source: Streams data from Kafka topics
+  - File Source: Watches directories for new files
+  - JDBC Source: Reads data from databases
+
+- `SinkFactory`: Creates and manages different types of data sinks
+  - Kafka Sink: Writes data to Kafka topics
+  - File Sink: Writes data to files (text, CSV, Parquet)
+  - JDBC Sink: Writes data to databases
 
 ## Prerequisites
 
@@ -152,20 +166,77 @@ tail -f /usr/local/var/log/zookeeper/zookeeper.log
 tail -f logs/zookeeper.log
 ```
 
+## Supported Data Sources
+
+### Kafka Source
+
+- Supports multiple topics
+- Configurable consumer groups
+- Customizable deserializers
+- Offset management
+
+### File Source
+
+- Directory monitoring
+- File pattern matching
+- Automatic file type detection (CSV, TEXT)
+- Batch processing support
+
+### JDBC Source
+
+- Database connectivity
+- SQL query support
+- Batch fetching
+- Connection pooling
+
+## Supported Data Sinks
+
+### Kafka Sink
+
+- Multiple topic support
+- Customizable serializers
+- Producer configuration
+- Error handling
+
+### File Sink
+
+- Multiple output formats (text, CSV, Parquet)
+- Configurable file naming
+- Header management
+- Batch writing
+
+### JDBC Sink
+
+- Database connectivity
+- Batch inserts
+- Transaction management
+- Error handling
+
 ## Configuration
 
 The pipeline is configured using YAML. Example configuration in `src/main/resources/pipeline-config.yaml`:
 
 ```yaml
 source:
-  type: kafka
+  type: kafka  # or file, jdbc
   properties:
+    # Kafka specific properties
     bootstrapServers: localhost:9092
     topic: input-topic
     groupId: my-group
     autoOffsetReset: earliest
     keyDeserializer: org.apache.kafka.common.serialization.StringDeserializer
     valueDeserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+    # File specific properties
+    directory: /path/to/watch
+    pattern: "*.csv"
+    
+    # JDBC specific properties
+    url: jdbc:postgresql://localhost:5432/mydb
+    username: user
+    password: pass
+    query: "SELECT * FROM mytable"
 
 transformations:
   - type: filter
@@ -177,12 +248,25 @@ transformations:
       suffix: "-done"
 
 sink:
-  type: kafka
+  type: kafka  # or file, jdbc
   properties:
+    # Kafka specific properties
     bootstrapServers: localhost:9092
     topic: output-topic
     keySerializer: org.apache.kafka.common.serialization.StringSerializer
     valueSerializer: org.apache.kafka.common.serialization.StringSerializer
+    
+    # File specific properties
+    path: /path/to/output
+    format: parquet  # or text, csv
+    prefix: output
+    extension: .parquet
+    
+    # JDBC specific properties
+    url: jdbc:postgresql://localhost:5432/mydb
+    username: user
+    password: pass
+    table: output_table
 ```
 
 ## Running the Application
@@ -260,6 +344,17 @@ processed-another important update-done
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+### Adding New Connectors
+
+To add a new connector:
+
+1. Create a new source/sink class in the appropriate factory package
+2. Implement the required interfaces and methods
+3. Add the new connector type to the factory class
+4. Update the configuration validation
+5. Add appropriate tests
+6. Update documentation
 
 ## License
 

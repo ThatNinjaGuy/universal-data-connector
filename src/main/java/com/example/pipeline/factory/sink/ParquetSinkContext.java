@@ -30,15 +30,17 @@ public class ParquetSinkContext implements Serializable {
     private final Map<String, ParquetWriter<GenericRecord>> writers = new HashMap<>();
     private transient Schema avroSchema;
     private Map<String, Integer> columnMapping;
-    private static final int BATCH_SIZE = 1000;
+    private final int batchSize;
     private final ConcurrentMap<String, List<GenericRecord>> batchMap = new ConcurrentHashMap<>();
     
-    public ParquetSinkContext(String directory, String schema) {
+    public ParquetSinkContext(String directory, String schema, int batchSize) {
         this.directory = directory;
         this.schema = schema;
+        this.batchSize = batchSize;
         try {
             this.avroSchema = new Schema.Parser().parse(schema);
-            logger.info("Initialized ParquetSinkContext with directory: {} and schema: {}", directory, avroSchema.getName());
+            logger.info("Initialized ParquetSinkContext with directory: {}, schema: {}, batch size: {}", 
+                directory, avroSchema.getName(), batchSize);
             
             // Create output directory if it doesn't exist
             File outDir = new File(directory);
@@ -217,7 +219,8 @@ public class ParquetSinkContext implements Serializable {
         List<GenericRecord> batch = batchMap.computeIfAbsent(writerKey, k -> new ArrayList<>());
         batch.add(record);
         
-        if (batch.size() >= BATCH_SIZE) {
+        if (batch.size() >= batchSize) {
+            logger.info("Batch size reached {} for {}, flushing...", batchSize, writerKey);
             flushBatch(writerKey);
         }
     }
@@ -225,18 +228,56 @@ public class ParquetSinkContext implements Serializable {
     private void flushBatch(String writerKey) throws Exception {
         List<GenericRecord> batch = batchMap.remove(writerKey);
         if (batch != null && !batch.isEmpty()) {
-            ParquetWriter<GenericRecord> writer = writers.get(writerKey);
-            if (writer != null) {
+            // Close the existing writer if it exists
+            ParquetWriter<GenericRecord> oldWriter = writers.remove(writerKey);
+            if (oldWriter != null) {
                 try {
-                    for (GenericRecord record : batch) {
-                        writer.write(record);
-                    }
-                    logger.info("Flushed batch of {} records for {}", batch.size(), writerKey);
+                    oldWriter.close();
+                    logger.info("Closed previous writer for {}", writerKey);
                 } catch (IOException e) {
-                    logger.error("Batch write failed", e);
-                    throw new RuntimeException("Failed to write batch", e);
+                    logger.error("Error closing previous writer", e);
                 }
             }
+
+            // Create a new writer for this batch
+            ParquetWriter<GenericRecord> writer = createWriter(writerKey);
+            writers.put(writerKey, writer);
+
+            try {
+                for (GenericRecord record : batch) {
+                    writer.write(record);
+                }
+                logger.info("Flushed batch of {} records for {} to new file", batch.size(), writerKey);
+            } catch (IOException e) {
+                logger.error("Batch write failed", e);
+                throw new RuntimeException("Failed to write batch", e);
+            }
+        }
+    }
+
+    private ParquetWriter<GenericRecord> createWriter(String sourceFile) {
+        try {
+            String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
+            String fileName = sourceFile + "_" + timestamp + ".parquet";
+            Path path = new Path(new File(directory, fileName).getAbsolutePath());
+            
+            logger.info("Creating new Parquet writer for file: {}", path);
+            
+            ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(path)
+                .withSchema(avroSchema)
+                .withCompressionCodec(CompressionCodecName.SNAPPY)
+                .withRowGroupSize(ParquetWriter.DEFAULT_BLOCK_SIZE)
+                .withPageSize(ParquetWriter.DEFAULT_PAGE_SIZE)
+                .withDictionaryEncoding(true)
+                .withValidation(true)
+                .withConf(new Configuration())
+                .build();
+
+            logger.info("Successfully created Parquet writer for file: {}", path);
+            return writer;
+        } catch (Exception e) {
+            logger.error("Failed to create Parquet writer: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create Parquet writer", e);
         }
     }
 
@@ -305,32 +346,6 @@ public class ParquetSinkContext implements Serializable {
 
     private ParquetWriter<GenericRecord> getWriter(String sourceFile) {
         return writers.computeIfAbsent(sourceFile, this::createWriter);
-    }
-
-    private ParquetWriter<GenericRecord> createWriter(String sourceFile) {
-        try {
-            String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
-            String fileName = sourceFile + "_" + timestamp + ".parquet";
-            Path path = new Path(new File(directory, fileName).getAbsolutePath());
-            
-            logger.info("Creating new Parquet writer for file: {}", path);
-            
-            ParquetWriter<GenericRecord> writer = AvroParquetWriter.<GenericRecord>builder(path)
-                .withSchema(avroSchema)
-                .withCompressionCodec(CompressionCodecName.SNAPPY)
-                .withRowGroupSize(ParquetWriter.DEFAULT_BLOCK_SIZE)
-                .withPageSize(ParquetWriter.DEFAULT_PAGE_SIZE)
-                .withDictionaryEncoding(true)
-                .withValidation(true)
-                .withConf(new Configuration())
-                .build();
-
-            logger.info("Successfully created Parquet writer for file: {}", path);
-            return writer;
-        } catch (Exception e) {
-            logger.error("Failed to create Parquet writer: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to create Parquet writer", e);
-        }
     }
 
     public void close() {
