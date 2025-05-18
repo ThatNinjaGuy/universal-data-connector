@@ -148,9 +148,8 @@ public class SinkFactory {
                     if (item != null && !item.isEmpty()) {
                         logger.info("Received item for Parquet processing: {}", item);
                         
-                        // The item should already be in the correct format from the source
-                        // Format: SOURCE=<filename>|TYPE=CSV|<content>
-                        if (!item.startsWith("SOURCE=")) {
+                        // Handle both SOURCE= and JDBC_SOURCE prefixes
+                        if (!item.startsWith("SOURCE=") && !item.startsWith("JDBC_SOURCE")) {
                             logger.error("Invalid item format for Parquet processing: {}", item);
                             return;
                         }

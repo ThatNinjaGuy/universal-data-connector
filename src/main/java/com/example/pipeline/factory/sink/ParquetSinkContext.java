@@ -47,6 +47,10 @@ public class ParquetSinkContext implements Serializable {
                 outDir.mkdirs();
                 logger.info("Created output directory: {}", directory);
             }
+
+            // Validate schema fields
+            List<String> schemaFields = getAvroSchemaFields();
+            logger.info("Schema fields: {}", schemaFields);
         } catch (Exception e) {
             logger.error("Failed to parse Avro schema: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to parse Avro schema", e);
@@ -109,11 +113,40 @@ public class ParquetSinkContext implements Serializable {
         }
 
         String content = parts[2];
+        logger.info("Processing JDBC content with {} characters", content.length());
+        
         try {
+            // Create a unique writer key for JDBC data
+            String writerKey = "jdbc_export_" + System.currentTimeMillis();
+            logger.info("Created writer key: {}", writerKey);
+            
+            // Validate schema against first row if column mapping not initialized
+            if (columnMapping == null) {
+                String[] lines = content.split("\n", -1);
+                if (lines.length > 0) {
+                    logger.info("Initializing column mapping from header: {}", lines[0]);
+                    initializeColumnMapping(lines[0]);
+                    // Verify all schema fields are mapped
+                    List<String> schemaFields = getAvroSchemaFields();
+                    for (String field : schemaFields) {
+                        if (!columnMapping.containsKey(field)) {
+                            logger.warn("Schema field '{}' not found in JDBC data", field);
+                        }
+                    }
+                }
+            }
+            
             // Ensure writer exists before processing
-            getWriter("jdbc_export"); 
-            processCSVContent("jdbc_export", content);
+            getWriter(writerKey); 
+            logger.info("Processing CSV content for writer key: {}", writerKey);
+            processCSVContent(writerKey, content);
+            // Force flush and close after processing
+            logger.info("Flushing and closing writer for key: {}", writerKey);
+            flushBatch(writerKey);
+            closeWriter(writerKey);
+            logger.info("Successfully processed and closed writer for key: {}", writerKey);
         } catch (Exception e) {
+            logger.error("Failed to process JDBC content: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to process JDBC content", e);
         }
     }
