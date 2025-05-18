@@ -136,39 +136,9 @@ public class SinkFactory {
         String format = props.getOrDefault("format", "text");
         String extension = props.getOrDefault("extension", ".txt");
         boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
-        boolean isJdbcMode = Boolean.parseBoolean(props.getOrDefault("jdbcMode", "false"));
 
         if ("parquet".equals(format)) {
-            String schema = props.get("schema");
-            int batchSize = Integer.parseInt(props.getOrDefault("batchSize", "1000"));
-            
-            return SinkBuilder
-                .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema, batchSize))
-                .<String>receiveFn((context, item) -> {
-                    if (item != null && !item.isEmpty()) {
-                        logger.info("Received item for Parquet processing: {}", item);
-                        
-                        // Handle both SOURCE= and JDBC_SOURCE prefixes
-                        if (!item.startsWith("SOURCE=") && !item.startsWith("JDBC_SOURCE")) {
-                            logger.error("Invalid item format for Parquet processing: {}", item);
-                            return;
-                        }
-                        
-                        logger.debug("Writing item to Parquet: {}", item);
-                        ((ParquetSinkContext)context).write(item);
-                    }
-                })
-                .destroyFn(context -> {
-                    try {
-                        logger.info("Destroying ParquetSinkContext, closing all writers");
-                        ((ParquetSinkContext)context).close();
-                        logger.info("Successfully destroyed ParquetSinkContext");
-                    } catch (Exception e) {
-                        logger.error("Error destroying ParquetSinkContext: {}", e.getMessage(), e);
-                        throw e;
-                    }
-                })
-                .build();
+            return createParquetSink(props);
         }
 
         return SinkBuilder
@@ -176,6 +146,74 @@ public class SinkFactory {
             .<String>receiveFn(FileSinkContext::write)
             .destroyFn(FileSinkContext::close)
             .build();
+    }
+
+    private static Sink<String> createParquetSink(Map<String, String> props) {
+        validateParquetConfig(props);
+        
+        String directory = props.get("path");
+        String schema = props.get("schema");
+        int batchSize = Integer.parseInt(props.getOrDefault("batchSize", "1000"));
+        
+        return SinkBuilder
+            .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema, batchSize))
+            .<String>receiveFn((context, item) -> {
+                if (item != null && !item.isEmpty()) {
+                    logger.info("Received item for Parquet processing: {}", item);
+                    
+                    // Handle both SOURCE= and JDBC_SOURCE prefixes
+                    if (!item.startsWith("SOURCE=") && !item.startsWith("JDBC_SOURCE")) {
+                        logger.error("Invalid item format for Parquet processing: {}", item);
+                        return;
+                    }
+                    
+                    logger.debug("Writing item to Parquet: {}", item);
+                    ((ParquetSinkContext)context).write(item);
+                }
+            })
+            .destroyFn(context -> {
+                try {
+                    logger.info("Destroying ParquetSinkContext, closing all writers");
+                    ((ParquetSinkContext)context).close();
+                    logger.info("Successfully destroyed ParquetSinkContext");
+                } catch (Exception e) {
+                    logger.error("Error destroying ParquetSinkContext: {}", e.getMessage(), e);
+                    throw e;
+                }
+            })
+            .build();
+    }
+
+    private static void validateParquetConfig(Map<String, String> props) {
+        if (!props.containsKey("path")) {
+            throw new IllegalArgumentException("Parquet sink requires 'path' property");
+        }
+        if (!props.containsKey("schema")) {
+            throw new IllegalArgumentException("Parquet sink requires 'schema' property");
+        }
+        try {
+            // Validate schema format
+            String schema = props.get("schema");
+            // Remove whitespace and newlines for validation
+            String normalizedSchema = schema.replaceAll("\\s+", "");
+            
+            // Basic Avro schema validation
+            if (!normalizedSchema.contains("\"type\":\"record\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing type record");
+            }
+            if (!normalizedSchema.contains("\"fields\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing fields");
+            }
+            if (!normalizedSchema.contains("\"name\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing name");
+            }
+            
+            // Log the schema for debugging
+            logger.debug("Validated Parquet schema: {}", schema);
+        } catch (Exception e) {
+            logger.error("Schema validation failed: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid Parquet schema: " + e.getMessage());
+        }
     }
 
     private static Sink<String> createJdbcSink(SinkConfig config) {
