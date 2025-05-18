@@ -28,6 +28,10 @@ public class JdbcSourceContext implements Serializable, AutoCloseable {
         this.query = properties.getOrDefault("query", "SELECT * FROM " + properties.get("table"));
         this.batchSize = Integer.parseInt(properties.getOrDefault("batchSize", "1000"));
 
+        if (jdbcUrl == null || user == null) {
+            throw new SQLException("Required properties 'jdbcUrl' and 'user' must be provided");
+        }
+
         logger.info("Initializing JDBC source with URL: {}, query: {}, batch size: {}", jdbcUrl, query, batchSize);
         
         try {
@@ -43,6 +47,9 @@ public class JdbcSourceContext implements Serializable, AutoCloseable {
             try (Statement testStmt = connection.createStatement()) {
                 ResultSet testRs = testStmt.executeQuery("EXPLAIN " + query);
                 logger.info("Query plan validation successful");
+            } catch (SQLException e) {
+                logger.error("Query validation failed: {}", e.getMessage());
+                throw new SQLException("Invalid query: " + e.getMessage(), e);
             }
             
             // Get total count
@@ -52,6 +59,9 @@ public class JdbcSourceContext implements Serializable, AutoCloseable {
                     long totalRows = countRs.getLong(1);
                     logger.info("Total rows to be fetched: {}", totalRows);
                 }
+            } catch (SQLException e) {
+                logger.error("Failed to get row count: {}", e.getMessage());
+                throw new SQLException("Failed to get row count: " + e.getMessage(), e);
             }
             
             statement = connection.prepareStatement(query, 
@@ -144,8 +154,10 @@ public class JdbcSourceContext implements Serializable, AutoCloseable {
             }
             
             if (count > 0) {
-                batch.add(csvContent.toString());
-                logger.info("Emitting CSV content with {} rows", count);
+                // Format the output in the expected JDBC_SOURCE format
+                String formattedOutput = String.format("JDBC_SOURCE|CSV|%s", csvContent.toString());
+                batch.add(formattedOutput);
+                logger.info("Emitting JDBC_SOURCE formatted content with {} rows", count);
             }
         } catch (SQLException e) {
             logger.error("Error reading batch: {}", e.getMessage(), e);

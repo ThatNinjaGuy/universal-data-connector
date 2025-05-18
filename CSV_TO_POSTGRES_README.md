@@ -214,3 +214,58 @@ psql -d udc -c "TRUNCATE TABLE employee;"
 # Clear processed files
 rm -rf data/processed/*
 ```
+
+- name: "csv-to-postgres"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-postgres"
+        pattern: "*.csv"
+    transformations:
+  - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "ID"
+            name: "NAME"
+            email: "EMAIL"
+            department: "DEPARTMENT"
+            salary: "SALARY"
+    sink:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "deadshot"
+        password: ""
+        table: "employee"
+        query: "INSERT INTO employee (id, name, email, department, salary) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, department = EXCLUDED.department, salary = EXCLUDED.salary"
+        batchSize: 1000
+
+- name: "postgres-to-csv"
+    source:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "deadshot"
+        password: ""
+        table: "employee"
+        query: "SELECT id, name, email, department, salary FROM employee ORDER BY id"
+        batchSize: 1000
+        oneTimeOperation: true
+    transformations:
+  - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            name: "name"
+            email: "email"
+            department: "department"
+            salary: "salary"
+    sink:
+      type: file
+      properties:
+        path: "data/output/postgres-to-csv"
+        prefix: "employee_export"
+        extension: ".csv"
+        includeHeaders: true
