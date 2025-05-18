@@ -5,6 +5,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.File;
+import java.util.Map;
+import java.util.HashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * Behavior:
  * - Each processed file is written to its own output file
  * - Output files preserve the original source filename
- * - Writers are created per file and closed after writing
+ * - Writers are managed per file and closed after writing
  */
 public class FileSinkContext implements Serializable {
     private static final Logger logger = LoggerFactory.getLogger(FileSinkContext.class);
@@ -28,6 +30,9 @@ public class FileSinkContext implements Serializable {
     
     // Whether to include headers in CSV output
     private final boolean includeHeaders;
+    
+    // Map of writers for each source file
+    private final Map<String, BufferedWriter> writers = new HashMap<>();
 
     /**
      * Initializes the FileSinkContext with configuration for file output.
@@ -60,7 +65,6 @@ public class FileSinkContext implements Serializable {
      * @param item The item to process and write, containing metadata and content
      */
     public void write(String item) {
-        BufferedWriter writer = null;
         try {
             logger.debug("Processing item: {}", item);
             
@@ -73,37 +77,54 @@ public class FileSinkContext implements Serializable {
             }
             
             String sourceFile = parts[0].substring("SOURCE=".length());
+            String fileType = parts[1].substring("TYPE=".length());
             String content = parts[2];
             
-            // Remove the original extension before adding the new one
-            String baseFilename = sourceFile;
-            int lastDotIndex = sourceFile.lastIndexOf('.');
-            if (lastDotIndex > 0) {
-                baseFilename = sourceFile.substring(0, lastDotIndex);
-            }
-            
-            String outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
-            logger.debug("Creating output file: {}", outputFile);
-            
-            // Create a new writer for this file
-            writer = new BufferedWriter(new FileWriter(outputFile));
+            // Get or create writer for this source file
+            BufferedWriter writer = writers.computeIfAbsent(sourceFile, filename -> {
+                try {
+                    // Remove the original extension before adding the new one
+                    String baseFilename = filename;
+                    int lastDotIndex = filename.lastIndexOf('.');
+                    if (lastDotIndex > 0) {
+                        baseFilename = filename.substring(0, lastDotIndex);
+                    }
+                    String outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
+                    logger.info("Creating new file: {}", outputFile);
+                    return new BufferedWriter(new FileWriter(outputFile));
+                } catch (IOException e) {
+                    logger.error("Failed to create writer for file {}: {}", filename, e.getMessage());
+                    throw new RuntimeException("Failed to create writer", e);
+                }
+            });
+
             writer.write(content);
+            writer.newLine();
             writer.flush();
             
-            logger.info("Successfully wrote content to: {}", outputFile);
+            logger.info("Successfully wrote content to file: {}", sourceFile);
             
         } catch (Exception e) {
             logger.error("Error processing item: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to process item", e);
-        } finally {
-            // Always close the writer
-            if (writer != null) {
-                try {
+        }
+    }
+
+    /**
+     * Closes all writers and cleans up resources.
+     */
+    public void close() {
+        try {
+            for (BufferedWriter writer : writers.values()) {
+                if (writer != null) {
                     writer.close();
-                } catch (IOException e) {
-                    logger.error("Failed to close writer: {}", e.getMessage());
                 }
             }
+            writers.clear();
+            logger.info("Successfully closed all writers");
+        } catch (IOException e) {
+            logger.error("Failed to close writers: {}", e.getMessage());
+            throw new RuntimeException("Failed to close writers", e);
         }
     }
 }

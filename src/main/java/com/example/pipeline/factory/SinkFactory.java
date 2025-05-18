@@ -13,19 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import com.example.pipeline.factory.sink.ParquetSinkContext;
+import com.example.pipeline.factory.sink.FileSinkContext;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.Serializable;
 import java.util.Map;
 import java.util.Properties;
-import java.util.HashMap;
-import java.io.File;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
-import java.lang.StringBuilder;
 
 public class SinkFactory {
     private static final Logger logger = LoggerFactory.getLogger(SinkFactory.class);
@@ -258,78 +250,5 @@ public class SinkFactory {
                 }
             }
         );
-    }
-
-    private static class FileSinkContext implements Serializable {
-        private final String directory;
-        private final String extension;
-        private final boolean includeHeaders;
-        private Map<String, BufferedWriter> writers = new HashMap<>();
-
-        FileSinkContext(String directory, String extension, boolean includeHeaders) {
-            this.directory = directory;
-            this.extension = extension;
-            this.includeHeaders = includeHeaders;
-            
-            // Create output directory if it doesn't exist
-            File dir = new File(directory);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-        }
-
-        void write(String item) {
-            try {
-                // Parse metadata from the item
-                // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
-                String[] parts = item.split("\\|", -1);
-                if (parts.length < 3) {
-                    logger.error("Invalid item format: {}", item);
-                    return;
-                }
-                
-                String sourceFile = parts[0].substring("SOURCE=".length());
-                String fileType = parts[1].substring("TYPE=".length());
-                String content = parts[2];
-                
-                // Get or create writer for this source file
-                BufferedWriter writer = writers.computeIfAbsent(sourceFile, filename -> {
-                    try {
-                        // Remove the original extension before adding the new one
-                        String baseFilename = filename;
-                        int lastDotIndex = filename.lastIndexOf('.');
-                        if (lastDotIndex > 0) {
-                            baseFilename = filename.substring(0, lastDotIndex);
-                        }
-                        String outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
-                        logger.info("Creating new file: {}", outputFile);
-                        return new BufferedWriter(new FileWriter(outputFile));
-                    } catch (IOException e) {
-                        logger.error("Failed to create writer for file {}: {}", filename, e.getMessage());
-                        throw new RuntimeException("Failed to create writer", e);
-                    }
-                });
-
-                writer.write(content);
-                writer.newLine();
-                writer.flush();
-            } catch (IOException e) {
-                logger.error("Failed to write to file: {}", e.getMessage());
-                throw new RuntimeException("Failed to write to file", e);
-            }
-        }
-
-        void close() {
-            try {
-                for (BufferedWriter writer : writers.values()) {
-                    if (writer != null) {
-                        writer.close();
-                    }
-                }
-                writers.clear();
-            } catch (IOException e) {
-                logger.error("Failed to close writers: {}", e.getMessage());
-            }
-        }
     }
 } 
