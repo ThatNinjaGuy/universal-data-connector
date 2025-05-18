@@ -1,4 +1,4 @@
-id,name,email,department,salary
+ID,NAME,EMAIL,DEPARTMENT,SALARY
 1,John Doe,john.doe@example.com,IT,75000.00
 2,Jane Smith,jane.smith@example.com,HR,65000.00
 3,Bob Wilson,bob.wilson@example.com,Sales,80000.00

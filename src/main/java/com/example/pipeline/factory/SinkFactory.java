@@ -246,8 +246,7 @@ public class SinkFactory {
         private final String prefix;
         private final String extension;
         private final boolean includeHeaders;
-        private BufferedWriter writer;
-        private boolean isFirstWrite = true;
+        private Map<String, BufferedWriter> writers = new HashMap<>();
 
         FileSinkContext(String directory, String prefix, String extension, boolean includeHeaders) {
             this.directory = directory;
@@ -264,15 +263,37 @@ public class SinkFactory {
 
         void write(String item) {
             try {
-                if (writer == null) {
-                    String timestamp = String.format("%1$tY%1$tm%1$td_%1$tH%1$tM%1$tS", new Date());
-                    String filename = String.format("%s_%s%s", prefix, timestamp, extension);
-                    File outputFile = new File(directory, filename);
-                    writer = new BufferedWriter(new FileWriter(outputFile));
-                    logger.info("Created new CSV file: {}", outputFile.getAbsolutePath());
+                // Parse metadata from the item
+                // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
+                String[] parts = item.split("\\|", -1);
+                if (parts.length < 3) {
+                    logger.error("Invalid item format: {}", item);
+                    return;
                 }
+                
+                String sourceFile = parts[0].substring("SOURCE=".length());
+                String fileType = parts[1].substring("TYPE=".length());
+                String content = parts[2];
+                
+                // Get or create writer for this source file
+                BufferedWriter writer = writers.computeIfAbsent(sourceFile, filename -> {
+                    try {
+                        // Remove the original extension before adding the new one
+                        String baseFilename = filename;
+                        int lastDotIndex = filename.lastIndexOf('.');
+                        if (lastDotIndex > 0) {
+                            baseFilename = filename.substring(0, lastDotIndex);
+                        }
+                        String outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
+                        logger.info("Creating new file: {}", outputFile);
+                        return new BufferedWriter(new FileWriter(outputFile));
+                    } catch (IOException e) {
+                        logger.error("Failed to create writer for file {}: {}", filename, e.getMessage());
+                        throw new RuntimeException("Failed to create writer", e);
+                    }
+                });
 
-                writer.write(item);
+                writer.write(content);
                 writer.newLine();
                 writer.flush();
             } catch (IOException e) {
@@ -283,12 +304,14 @@ public class SinkFactory {
 
         void close() {
             try {
-                if (writer != null) {
-                    writer.close();
-                    writer = null;
+                for (BufferedWriter writer : writers.values()) {
+                    if (writer != null) {
+                        writer.close();
+                    }
                 }
+                writers.clear();
             } catch (IOException e) {
-                logger.error("Failed to close writer: {}", e.getMessage());
+                logger.error("Failed to close writers: {}", e.getMessage());
             }
         }
     }
