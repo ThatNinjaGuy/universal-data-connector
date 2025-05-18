@@ -87,7 +87,7 @@ pipelines:
     sink:
       type: file
       properties:
-        path: "data/output/postgres-to-parquet"
+        path: "data/output/postgres-to-parquet/employee"
         format: "parquet"
         schema: |
           {
