@@ -2,8 +2,7 @@ package com.example.pipeline.config;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.jet.Jet;
-import com.hazelcast.jet.JetInstance;
+import com.hazelcast.core.Hazelcast;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -11,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class HazelcastConfig {
 
     @Bean
-    public JetInstance jetInstance() {
+    public HazelcastInstance hazelcastInstance() {
         // Create base Hazelcast config
         Config config = new Config();
         config.setClusterName("pipeline-cluster");
@@ -34,12 +33,7 @@ public class HazelcastConfig {
             .setEnabled(true)
             .setResourceUploadEnabled(true);
 
-        // Create Jet instance using the static factory method
-        return Jet.bootstrappedInstance();
-    }
-
-    @Bean
-    public HazelcastInstance hazelcastInstance(JetInstance jetInstance) {
-        return jetInstance.getHazelcastInstance();
+        // Create Hazelcast instance
+        return Hazelcast.newHazelcastInstance(config);
     }
 } 

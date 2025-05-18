@@ -141,12 +141,13 @@ public class SinkFactory {
 
         if ("parquet".equals(format)) {
             String schema = props.get("schema");
+            int batchSize = Integer.parseInt(props.getOrDefault("batchSize", "1000"));
             // Create a timestamp once for the entire sink to avoid multiple files
             String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
             String sourceFile = String.format("postgres_export_%s", timestamp);
             
             return SinkBuilder
-                .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema))
+                .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema, batchSize))
                 .<String>receiveFn((context, item) -> {
                     if (isJdbcMode) {
                         // JDBC data comes as complete CSV content

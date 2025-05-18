@@ -14,8 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.ArrayList;
-import java.util.List;
 
 public class PipelineBuilder {
     private static final Logger logger = LoggerFactory.getLogger(PipelineBuilder.class);
@@ -111,7 +109,9 @@ public class PipelineBuilder {
         public String applyEx(String item) {
             try {
                 if ("csv".equals(format)) {
-                    return mapCsvLine(item);
+                    // For CSV, we just pass through the content with metadata
+                    // The actual transformation will be handled by FileSinkContext
+                    return item;
                 } else {
                     return prefix + item + suffix;
                 }
@@ -119,74 +119,6 @@ public class PipelineBuilder {
                 logger.error("Error in mapper: {}", e.getMessage());
                 return item;
             }
-        }
-
-        private String mapCsvLine(String line) {
-            String[] parts = line.split("\\|", -1);
-            if (parts.length >= 3 && parts[1].equals("TYPE=CSV")) {
-                String sourceFile = parts[0];
-                String csvContent = parts[2];
-                String[] lines = csvContent.split("\n", -1);
-                
-                if (lines.length < 2) {
-                    logger.warn("CSV content has insufficient lines: {}", lines.length);
-                    return line;
-                }
-                
-                // Process headers
-                String[] headers = lines[0].split(",", -1);
-                Map<Integer, Integer> columnIndexMap = new HashMap<>();
-                List<String> newHeaders = new ArrayList<>();
-                
-                // Create mapping from source columns to target columns
-                for (Map.Entry<String, String> entry : columnMapping.entrySet()) {
-                    String targetColumn = entry.getKey();
-                    String sourceColumn = entry.getValue();
-                    
-                    // Find source column index
-                    for (int i = 0; i < headers.length; i++) {
-                        if (headers[i].trim().equalsIgnoreCase(sourceColumn)) {
-                            columnIndexMap.put(i, newHeaders.size());
-                            newHeaders.add(targetColumn);
-                            break;
-                        }
-                    }
-                }
-                
-                if (columnIndexMap.isEmpty()) {
-                    logger.warn("No matching columns found in mapping");
-                    return line;
-                }
-                
-                // Build new CSV content
-                StringBuilder newContent = new StringBuilder();
-                
-                // Add new headers
-                newContent.append(String.join(",", newHeaders)).append("\n");
-                
-                // Process data rows
-                for (int i = 1; i < lines.length; i++) {
-                    String[] fields = lines[i].split(",", -1);
-                    String[] newFields = new String[newHeaders.size()];
-                    
-                    // Map fields to new positions
-                    for (Map.Entry<Integer, Integer> entry : columnIndexMap.entrySet()) {
-                        int sourceIndex = entry.getKey();
-                        int targetIndex = entry.getValue();
-                        
-                        if (sourceIndex < fields.length) {
-                            newFields[targetIndex] = fields[sourceIndex].trim();
-                        } else {
-                            newFields[targetIndex] = "";
-                        }
-                    }
-                    
-                    newContent.append(String.join(",", newFields)).append("\n");
-                }
-                
-                return sourceFile + "|TYPE=CSV|" + newContent.toString();
-            }
-            return line;
         }
     }
 
