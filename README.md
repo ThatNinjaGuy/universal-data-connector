@@ -2,25 +2,11 @@
 
 A flexible and extensible data pipeline built with Hazelcast Jet that supports various data sources and sinks with configurable transformations. The application uses a factory pattern to create and manage different types of data sources and sinks, making it easy to add new connectors.
 
-## Architecture
-
-The application follows a factory-based architecture:
-
-- `SourceFactory`: Creates and manages different types of data sources
-  - Kafka Source: Streams data from Kafka topics
-  - File Source: Watches directories for new files
-  - JDBC Source: Reads data from databases
-
-- `SinkFactory`: Creates and manages different types of data sinks
-  - Kafka Sink: Writes data to Kafka topics
-  - File Sink: Writes data to files (text, CSV, Parquet)
-  - JDBC Sink: Writes data to databases
-
 ## Prerequisites
 
 - Java 17 or higher
 - Maven 3.6 or higher
-- Apache Kafka 3.6.x (for Kafka source/sink)
+- PostgreSQL (for JDBC source/sink functionality)
 
 ## Installation
 
@@ -37,305 +23,213 @@ cd universal-data-connector
 mvn clean package
 ```
 
-## Setting up Kafka (if using Kafka source/sink)
+## Running the Application
 
-### For Mac Users (using Homebrew)
-
-1. Install Kafka using Homebrew (this will also install Zookeeper):
+1. Start the application:
 
 ```bash
-# Install Homebrew if you haven't already
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install Kafka
-brew install kafka
+./run.sh
 ```
 
-2. Start Zookeeper (in a separate terminal):
+## Testing the Pipelines
+
+The application supports several data transformation pipelines. To test them, you'll need to set up the input data in the appropriate directories:
+
+### 1. Text to Text Pipeline
+
+1. Create a text file in `data/input/text-to-text/`:
 
 ```bash
-brew services start zookeeper
+echo "This is a test message" > data/input/text-to-text/test.txt
 ```
 
-3. Start Kafka (in a separate terminal):
+### 2. CSV to CSV Pipeline
+
+1. Create a CSV file in `data/input/csv-to-csv/`:
 
 ```bash
-brew services start kafka
+echo "id,name,email
+1,John Doe,john@example.com
+2,Jane Smith,jane@example.com" > data/input/csv-to-csv/test.csv
 ```
 
-4. Verify services are running:
+### 3. CSV to Parquet Pipeline
+
+1. Create a CSV file in `data/input/csv-to-parquet/`:
 
 ```bash
-brew services list
-# Should show both kafka and zookeeper as "started"
+echo "id,project,status,assignee,deadline
+1,Project A,important,John Doe,2024-12-31
+2,Project B,normal,Jane Smith,2024-12-31" > data/input/csv-to-parquet/test.csv
 ```
 
-### For Other Operating Systems (Manual Setup)
+### 4. PostgreSQL to Parquet Pipeline
 
-1. Download and extract Kafka:
+1. Create the employee table in PostgreSQL:
 
-```bash
-wget https://downloads.apache.org/kafka/3.6.1/kafka_2.13-3.6.1.tgz
-tar -xzf kafka_2.13-3.6.1.tgz
-cd kafka_2.13-3.6.1
+```sql
+CREATE TABLE employee (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    email VARCHAR(100),
+    department VARCHAR(50),
+    salary DECIMAL(10,2)
+);
+
+-- Insert sample data
+INSERT INTO employee (name, email, department, salary) VALUES
+    ('John Doe', 'john.doe@example.com', 'IT', 75000.00),
+    ('Jane Smith', 'jane.smith@example.com', 'HR', 65000.00),
+    ('Bob Wilson', 'bob.wilson@example.com', 'Sales', 80000.00);
 ```
 
-2. Start Zookeeper (in a separate terminal):
+## Supported Pipelines
 
-```bash
-bin/zookeeper-server-start.sh config/zookeeper.properties
-```
+### 1. Text to Text Pipeline
 
-3. Start Kafka Server (in a separate terminal):
+- Source: Text files from `data/input/text-to-text/`
+- Sink: Text files to `data/output/text-to-text/`
+- Features:
+  - Preserves original file names
+  - Processes text files in real-time
 
-```bash
-bin/kafka-server-start.sh config/server.properties
-```
+### 2. CSV to CSV Pipeline
 
-### Creating Required Topics
+- Source: CSV files from `data/input/csv-to-csv/`
+- Sink: CSV files to `data/output/csv-to-csv/`
+- Features:
+  - Preserves headers
+  - Maintains original file names
+  - Handles CSV escaping
 
-1. Create the topics needed for the pipeline:
+### 3. CSV to Parquet Pipeline
 
-```bash
-# Create input topic
-kafka-topics --create --topic input-topic \
-    --bootstrap-server localhost:9092 \
-    --partitions 1 \
-    --replication-factor 1
+- Source: CSV files from `data/input/csv-to-parquet/`
+- Sink: Parquet files to `data/output/csv-to-parquet/`
+- Features:
+  - Filters records based on status
+  - Converts to Parquet format
+  - Supports custom schema
+  - Batch processing
 
-# Create output topic
-kafka-topics --create --topic output-topic \
-    --bootstrap-server localhost:9092 \
-    --partitions 1 \
-    --replication-factor 1
-```
+### 4. PostgreSQL to Parquet Pipeline
 
-2. Verify topics were created:
-
-```bash
-kafka-topics --list --bootstrap-server localhost:9092
-```
-
-### Stopping Kafka (when done)
-
-For Mac users:
-
-```bash
-# Stop Kafka
-brew services stop kafka
-
-# Stop Zookeeper
-brew services stop zookeeper
-```
-
-For other operating systems:
-
-```bash
-# Stop Kafka
-bin/kafka-server-stop.sh
-
-# Stop Zookeeper
-bin/zookeeper-server-stop.sh
-```
-
-### Troubleshooting Kafka
-
-1. Verify Kafka is running:
-
-```bash
-lsof -i :9092
-```
-
-2. Check Kafka logs:
-
-```bash
-# For Mac (Homebrew installation)
-tail -f /usr/local/var/log/kafka/kafka_output.log
-
-# For manual installation
-tail -f logs/server.log
-```
-
-3. Check Zookeeper logs:
-
-```bash
-# For Mac (Homebrew installation)
-tail -f /usr/local/var/log/zookeeper/zookeeper.log
-
-# For manual installation
-tail -f logs/zookeeper.log
-```
-
-## Supported Data Sources
-
-### Kafka Source
-
-- Supports multiple topics
-- Configurable consumer groups
-- Customizable deserializers
-- Offset management
-
-### File Source
-
-- Directory monitoring
-- File pattern matching
-- Automatic file type detection (CSV, TEXT)
-- Batch processing support
-
-### JDBC Source
-
-- Database connectivity
-- SQL query support
-- Batch fetching
-- Connection pooling
-
-## Supported Data Sinks
-
-### Kafka Sink
-
-- Multiple topic support
-- Customizable serializers
-- Producer configuration
-- Error handling
-
-### File Sink
-
-- Multiple output formats (text, CSV, Parquet)
-- Configurable file naming
-- Header management
-- Batch writing
-
-### JDBC Sink
-
-- Database connectivity
-- Batch inserts
-- Transaction management
-- Error handling
+- Source: PostgreSQL database
+- Sink: Parquet files to `data/output/postgres-to-parquet/`
+- Features:
+  - Direct database connection
+  - Custom SQL queries
+  - Batch processing
+  - Schema validation
+  - Automatic type conversion
 
 ## Configuration
 
 The pipeline is configured using YAML. Example configuration in `src/main/resources/pipeline-config.yaml`:
 
 ```yaml
-source:
-  type: kafka  # or file, jdbc
-  properties:
-    # Kafka specific properties
-    bootstrapServers: localhost:9092
-    topic: input-topic
-    groupId: my-group
-    autoOffsetReset: earliest
-    keyDeserializer: org.apache.kafka.common.serialization.StringDeserializer
-    valueDeserializer: org.apache.kafka.common.serialization.StringDeserializer
+pipelines:
+  - name: "text-processor"
+    source:
+      type: file
+      properties:
+        path: "data/input/text-to-text"
+        pattern: "*.txt"
+    sink:
+      type: file
+      properties:
+        path: "data/output/text-to-text"
+        extension: ".txt"
 
-    # File specific properties
-    directory: /path/to/watch
-    pattern: "*.csv"
-    
-    # JDBC specific properties
-    url: jdbc:postgresql://localhost:5432/mydb
-    username: user
-    password: pass
-    query: "SELECT * FROM mytable"
+  - name: "csv-to-csv"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-csv"
+        pattern: "*.csv"
+    sink:
+      type: file
+      properties:
+        path: "data/output/csv-to-csv"
+        extension: ".csv"
+        includeHeaders: true
 
-transformations:
-  - type: filter
-    properties:
-      condition: "important"
-  - type: map
-    properties:
-      prefix: "processed-"
-      suffix: "-done"
+  - name: "csv-to-parquet"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-parquet"
+        pattern: "*.csv"
+    transformations:
+      - type: filter
+        properties:
+          column: "status"
+          condition: "important"
+    sink:
+      type: file
+      properties:
+        path: "data/output/csv-to-parquet"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "CsvRecord",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "string"},
+              {"name": "project", "type": "string"},
+              {"name": "status", "type": "string"},
+              {"name": "assignee", "type": "string"},
+              {"name": "deadline", "type": "string"}
+            ]
+          }
 
-sink:
-  type: kafka  # or file, jdbc
-  properties:
-    # Kafka specific properties
-    bootstrapServers: localhost:9092
-    topic: output-topic
-    keySerializer: org.apache.kafka.common.serialization.StringSerializer
-    valueSerializer: org.apache.kafka.common.serialization.StringSerializer
-    
-    # File specific properties
-    path: /path/to/output
-    format: parquet  # or text, csv
-    prefix: output
-    extension: .parquet
-    
-    # JDBC specific properties
-    url: jdbc:postgresql://localhost:5432/mydb
-    username: user
-    password: pass
-    table: output_table
+  - name: "postgres-to-parquet"
+    source:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "your_username"
+        password: "your_password"
+        table: "employee"
+        query: "SELECT id, name, email, department, salary FROM employee ORDER BY id"
+        batchSize: 1000
+    sink:
+      type: file
+      properties:
+        path: "data/output/postgres-to-parquet"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "Employee",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "int"},
+              {"name": "name", "type": "string"},
+              {"name": "email", "type": "string"},
+              {"name": "department", "type": "string"},
+              {"name": "salary", "type": "double"}
+            ]
+          }
 ```
-
-## Running the Application
-
-1. Start the pipeline:
-
-```bash
-java -jar target/hazelcast-data-pipeline-1.0-SNAPSHOT.jar
-```
-
-## Testing
-
-1. Produce test messages to input topic:
-
-```bash
-bin/kafka-console-producer.sh --topic input-topic \
-    --bootstrap-server localhost:9092
-```
-
-Then type messages like:
-
-```
-this is important message
-this is not filtered
-another important update
-```
-
-2. Consume processed messages from output topic:
-
-```bash
-bin/kafka-console-consumer.sh --topic output-topic \
-    --from-beginning \
-    --bootstrap-server localhost:9092
-```
-
-You should see filtered and transformed messages like:
-
-```
-processed-this is important message-done
-processed-another important update-done
-```
-
-## Supported Sources
-
-- Kafka
-- File (file watcher)
-
-## Supported Sinks
-
-- Kafka
-- File
-- JDBC
-
-## Supported Transformations
-
-- Filter: Filters messages based on a condition
-- Map: Transforms messages by adding prefix/suffix
 
 ## Troubleshooting
 
-1. If you see "No resolvable bootstrap urls":
-   - Ensure Kafka is running
-   - Verify bootstrap server configuration
-   - Check network connectivity
+1. If you see database connection errors:
+   - Verify PostgreSQL is running
+   - Check database credentials in pipeline-config.yaml
+   - Ensure the database and table exist
 
-2. If messages aren't being processed:
-   - Verify topics exist
-   - Check source/sink configuration
-   - Review transformation conditions
+2. If files aren't being processed:
+   - Check input directory paths
+   - Verify file permissions
+   - Ensure file patterns match
+
+3. If Parquet conversion fails:
+   - Verify schema matches data structure
+   - Check for data type mismatches
+   - Ensure all required fields are present
 
 ## Contributing
 
@@ -344,17 +238,6 @@ processed-another important update-done
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-### Adding New Connectors
-
-To add a new connector:
-
-1. Create a new source/sink class in the appropriate factory package
-2. Implement the required interfaces and methods
-3. Add the new connector type to the factory class
-4. Update the configuration validation
-5. Add appropriate tests
-6. Update documentation
 
 ## License
 
