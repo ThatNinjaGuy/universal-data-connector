@@ -3,21 +3,12 @@ pipelines:
     source:
       type: file
       properties:
-        path: "data/input/text"
+        path: "data/input/text-to-text"
         pattern: "*.txt"
-    transformations:
-      - type: filter
-        properties:
-          condition: "important"
-      - type: map
-        properties:
-          prefix: "processed-"
-          suffix: "-done"
     sink:
       type: file
       properties:
-        path: "data/output"
-        prefix: "processed"
+        path: "data/output/text-to-text"
         extension: ".txt"
 
   - name: "csv-to-csv"
@@ -29,8 +20,7 @@ pipelines:
     sink:
       type: file
       properties:
-        path: "data/output"
-        prefix: "processed"
+        path: "data/output/csv-to-csv"
         extension: ".csv"
         includeHeaders: true
 
@@ -52,10 +42,12 @@ pipelines:
             id: "id"
             project: "project"
             status: "status"
+            assignee: "assignee"
+            deadline: "deadline"
     sink:
       type: file
       properties:
-        path: "data/output"
+        path: "data/output/csv-to-parquet"
         format: "parquet"
         batchSize: 10
         schema: |
@@ -122,7 +114,7 @@ pipelines:
     sink:
       type: file
       properties:
-        path: "data/output"
+        path: "data/output/postgres-to-csv"
         prefix: "employee_export"
         extension: ".csv"
         includeHeaders: true
@@ -151,7 +143,7 @@ pipelines:
     sink:
       type: file
       properties:
-        path: "data/output"
+        path: "data/output/postgres-to-parquet"
         format: "parquet"
         batchSize: 1000
         schema: |

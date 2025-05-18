@@ -134,7 +134,6 @@ public class SinkFactory {
         Map<String, String> props = config.getProperties();
         String directory = props.get("path");
         String format = props.getOrDefault("format", "text");
-        String prefix = props.getOrDefault("prefix", "output");
         String extension = props.getOrDefault("extension", ".txt");
         boolean includeHeaders = Boolean.parseBoolean(props.getOrDefault("includeHeaders", "true"));
         boolean isJdbcMode = Boolean.parseBoolean(props.getOrDefault("jdbcMode", "false"));
@@ -142,39 +141,22 @@ public class SinkFactory {
         if ("parquet".equals(format)) {
             String schema = props.get("schema");
             int batchSize = Integer.parseInt(props.getOrDefault("batchSize", "1000"));
-            // Create a timestamp once for the entire sink to avoid multiple files
-            String timestamp = String.format("%tY%<tm%<td_%<tH%<tM%<tS", new Date());
-            String sourceFile = String.format("postgres_export_%s", timestamp);
             
             return SinkBuilder
                 .sinkBuilder("parquet-sink", ctx -> new ParquetSinkContext(directory, schema, batchSize))
                 .<String>receiveFn((context, item) -> {
-                    if (isJdbcMode) {
-                        // JDBC data comes as complete CSV content
-                        String formattedItem = "JDBC_SOURCE|TYPE=CSV|" + item;
-                        ((ParquetSinkContext)context).write(formattedItem);
-                    } else {
-                        // Existing file-based processing
-                        // Process only if we have valid data
-                        if (item != null && !item.isEmpty()) {
-                            logger.info("Received item for Parquet processing: {}", item);
-                            
-                            // Format the item with metadata if it doesn't already have it
-                            String formattedItem;
-                            if (!item.startsWith("SOURCE=")) {
-                                String[] lines = item.split("\n", -1);
-                                StringBuilder csvContent = new StringBuilder();
-                                for (String line : lines) {
-                                    csvContent.append(line).append("\n");
-                                }
-                                formattedItem = String.format("SOURCE=%s|TYPE=CSV|%s", sourceFile, csvContent.toString().trim());
-                            } else {
-                                formattedItem = item;
-                            }
-                            
-                            logger.debug("Writing formatted item to Parquet: {}", formattedItem);
-                            ((ParquetSinkContext)context).write(formattedItem);
+                    if (item != null && !item.isEmpty()) {
+                        logger.info("Received item for Parquet processing: {}", item);
+                        
+                        // The item should already be in the correct format from the source
+                        // Format: SOURCE=<filename>|TYPE=CSV|<content>
+                        if (!item.startsWith("SOURCE=")) {
+                            logger.error("Invalid item format for Parquet processing: {}", item);
+                            return;
                         }
+                        
+                        logger.debug("Writing item to Parquet: {}", item);
+                        ((ParquetSinkContext)context).write(item);
                     }
                 })
                 .destroyFn(context -> {
@@ -191,7 +173,7 @@ public class SinkFactory {
         }
 
         return SinkBuilder
-            .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, prefix, extension, includeHeaders))
+            .sinkBuilder("file-sink", ctx -> new FileSinkContext(directory, extension, includeHeaders))
             .<String>receiveFn(FileSinkContext::write)
             .destroyFn(FileSinkContext::close)
             .build();
@@ -243,14 +225,12 @@ public class SinkFactory {
 
     private static class FileSinkContext implements Serializable {
         private final String directory;
-        private final String prefix;
         private final String extension;
         private final boolean includeHeaders;
         private Map<String, BufferedWriter> writers = new HashMap<>();
 
-        FileSinkContext(String directory, String prefix, String extension, boolean includeHeaders) {
+        FileSinkContext(String directory, String extension, boolean includeHeaders) {
             this.directory = directory;
-            this.prefix = prefix;
             this.extension = extension;
             this.includeHeaders = includeHeaders;
             

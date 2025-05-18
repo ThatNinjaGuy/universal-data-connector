@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.Serializable;
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -147,6 +146,16 @@ public class ParquetSinkContext implements Serializable {
                 }
             }
         }
+        
+        // Force flush after processing each file
+        try {
+            flushBatch(sourceFile);
+            // Close the writer after flushing to ensure content is written
+            closeWriter(sourceFile);
+        } catch (Exception e) {
+            logger.error("Failed to flush batch for {}: {}", sourceFile, e.getMessage());
+            throw new RuntimeException("Failed to flush batch", e);
+        }
     }
 
     private void initializeColumnMapping(String headerLine) {
@@ -228,29 +237,29 @@ public class ParquetSinkContext implements Serializable {
     private void flushBatch(String writerKey) throws Exception {
         List<GenericRecord> batch = batchMap.remove(writerKey);
         if (batch != null && !batch.isEmpty()) {
-            // Close the existing writer if it exists
-            ParquetWriter<GenericRecord> oldWriter = writers.remove(writerKey);
-            if (oldWriter != null) {
-                try {
-                    oldWriter.close();
-                    logger.info("Closed previous writer for {}", writerKey);
-                } catch (IOException e) {
-                    logger.error("Error closing previous writer", e);
-                }
-            }
-
-            // Create a new writer for this batch
-            ParquetWriter<GenericRecord> writer = createWriter(writerKey);
-            writers.put(writerKey, writer);
+            // Get or create writer for this batch
+            ParquetWriter<GenericRecord> writer = getWriter(writerKey);
 
             try {
                 for (GenericRecord record : batch) {
                     writer.write(record);
                 }
-                logger.info("Flushed batch of {} records for {} to new file", batch.size(), writerKey);
+                logger.info("Flushed batch of {} records for {}", batch.size(), writerKey);
             } catch (IOException e) {
                 logger.error("Batch write failed", e);
                 throw new RuntimeException("Failed to write batch", e);
+            }
+        }
+    }
+
+    private void closeWriter(String writerKey) {
+        ParquetWriter<GenericRecord> writer = writers.remove(writerKey);
+        if (writer != null) {
+            try {
+                writer.close();
+                logger.info("Closed writer for {}", writerKey);
+            } catch (IOException e) {
+                logger.error("Failed to close writer for {}: {}", writerKey, e.getMessage());
             }
         }
     }
@@ -360,17 +369,7 @@ public class ParquetSinkContext implements Serializable {
             });
             
             // Close all writers with proper error handling
-            writers.forEach((key, writer) -> {
-                try {
-                    if (writer != null) {
-                        logger.info("Closing writer for: {}", key);
-                        writer.close();
-                        logger.info("Successfully closed writer for: {}", key);
-                    }
-                } catch (IOException e) {
-                    logger.error("Failed to close writer {}: {}", key, e.getMessage(), e);
-                }
-            });
+            new ArrayList<>(writers.keySet()).forEach(this::closeWriter);
         } finally {
             writers.clear();
             batchMap.clear();
