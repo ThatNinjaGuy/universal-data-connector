@@ -49,7 +49,6 @@ pipelines:
       properties:
         path: "data/output/csv-to-parquet"
         format: "parquet"
-        batchSize: 10
         schema: |
           {
             "type": "record",
