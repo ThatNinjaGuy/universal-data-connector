@@ -1,0 +1,139 @@
+pipelines:
+  - name: "text-processor"
+    source:
+      type: file
+      properties:
+        path: "data/input/text-to-text"
+        pattern: "*.txt"
+    sink:
+      type: file
+      properties:
+        path: "data/output/text-to-text"
+        extension: ".txt"
+
+  - name: "csv-to-csv"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-csv"
+        pattern: "*.csv"
+    sink:
+      type: file
+      properties:
+        path: "data/output/csv-to-csv"
+        extension: ".csv"
+        includeHeaders: true
+
+  - name: "csv-to-parquet"
+    source:
+      type: file
+      properties:
+        path: "data/input/csv-to-parquet"
+        pattern: "*.csv"
+    transformations:
+      - type: filter
+        properties:
+          column: "status"
+          condition: "important"
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            project: "project"
+            status: "status"
+            assignee: "assignee"
+            deadline: "deadline"
+    sink:
+      type: file
+      properties:
+        path: "data/output/csv-to-parquet"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "CsvRecord",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "string"},
+              {"name": "project", "type": "string"},
+              {"name": "status", "type": "string"},
+              {"name": "assignee", "type": "string"},
+              {"name": "deadline", "type": "string"}
+            ]
+          }
+
+  - name: "postgres-to-parquet"
+    source:
+      type: jdbc
+      properties:
+        jdbcUrl: "jdbc:postgresql://localhost:5432/udc"
+        user: "deadshot"
+        password: ""
+        table: "employee"
+        query: "SELECT id, name, email, department, salary FROM employee ORDER BY id"
+        batchSize: 1000
+        oneTimeOperation: true
+    transformations:
+      - type: map
+        properties:
+          format: "csv"
+          columnMapping:
+            id: "id"
+            name: "name"
+            email: "email"
+            department: "department"
+            salary: "salary"
+    sink:
+      type: file
+      properties:
+        path: "data/output/postgres-to-parquet/employee"
+        format: "parquet"
+        schema: |
+          {
+            "type": "record",
+            "name": "Employee",
+            "namespace": "com.example",
+            "fields": [
+              {"name": "id", "type": "int"},
+              {"name": "name", "type": "string"},
+              {"name": "email", "type": "string"},
+              {"name": "department", "type": "string"},
+              {"name": "salary", "type": "double"}
+            ]
+          }
+        jdbcMode: true
+
+  - name: "file-to-s3"
+    source:
+      type: file
+      properties:
+        path: "data/input/file-to-s3"
+        pattern: "*.*"
+    sink:
+      type: s3
+      properties:
+        bucketName: "universal-data-connector"
+        region: "eu-north-1"
+        prefix: "uploads/"
+        accessKey: "AKIA5WLTTBR5CCELK7GQ"
+        secretKey: "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"
+        endpoint: "https://s3.amazonaws.com"
+
+  - name: "s3-to-file"
+    source:
+      type: s3
+      properties:
+        bucketName: "universal-data-connector"
+        region: "eu-north-1"
+        prefix: "uploads/"
+        accessKey: "AKIA5WLTTBR5CCELK7GQ"
+        secretKey: "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"
+        endpoint: "https://s3.amazonaws.com"
+        pattern: "*.*"
+    sink:
+      type: file
+      properties:
+        path: "data/output/s3-to-file"
+        extension: ""
+        includeHeaders: true

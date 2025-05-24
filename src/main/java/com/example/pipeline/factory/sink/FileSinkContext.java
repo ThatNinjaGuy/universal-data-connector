@@ -83,13 +83,19 @@ public class FileSinkContext implements Serializable {
             // Get or create writer for this source file
             BufferedWriter writer = writers.computeIfAbsent(sourceFile, filename -> {
                 try {
-                    // Remove the original extension before adding the new one
-                    String baseFilename = filename;
-                    int lastDotIndex = filename.lastIndexOf('.');
-                    if (lastDotIndex > 0) {
-                        baseFilename = filename.substring(0, lastDotIndex);
+                    String outputFile;
+                    if (extension.isEmpty()) {
+                        // If extension is empty, preserve the original extension
+                        outputFile = String.format("%s/%s", directory, filename);
+                    } else {
+                        // Remove the original extension before adding the new one
+                        String baseFilename = filename;
+                        int lastDotIndex = filename.lastIndexOf('.');
+                        if (lastDotIndex > 0) {
+                            baseFilename = filename.substring(0, lastDotIndex);
+                        }
+                        outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
                     }
-                    String outputFile = String.format("%s/%s%s", directory, baseFilename, extension);
                     logger.info("Creating new file: {}", outputFile);
                     return new BufferedWriter(new FileWriter(outputFile));
                 } catch (IOException e) {

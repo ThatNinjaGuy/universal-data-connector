@@ -4,6 +4,7 @@ import com.example.pipeline.config.SourceConfig;
 import com.example.pipeline.factory.source.JdbcSourceContext;
 import com.example.pipeline.factory.source.FileSourceContext;
 import com.example.pipeline.factory.source.KafkaSourceContext;
+import com.example.pipeline.factory.source.S3SourceContext;
 import com.hazelcast.jet.pipeline.StreamSource;
 import com.hazelcast.jet.pipeline.SourceBuilder;
 import com.hazelcast.jet.core.Processor;
@@ -43,7 +44,8 @@ public class SourceFactory {
             return switch (config.getType().toLowerCase()) {
                 case "kafka" -> createKafkaSource(config);
                 case "file" -> createFileSource(config);
-                case "jdbc" -> createJdbcSource(config); 
+                case "jdbc" -> createJdbcSource(config);
+                case "s3" -> createS3Source(config);
                 default -> throw new IllegalArgumentException("Unknown source type: " + config.getType());
             };
         } catch (Exception e) {
@@ -109,6 +111,26 @@ public class SourceFactory {
             .build();
     }
 
+    private static StreamSource<String> createS3Source(SourceConfig config) {
+        validateS3Config(config);
+        Map<String, String> properties = config.getProperties();
+        
+        return SourceBuilder
+            .stream("s3-source", ctx -> new S3SourceContext(
+                properties.get("bucketName"),
+                properties.get("region"),
+                properties.get("accessKey"),
+                properties.get("secretKey"),
+                properties.getOrDefault("prefix", ""),
+                properties.getOrDefault("pattern", "*.*")
+            ))
+            .<String>fillBufferFn((context, buffer) -> {
+                List<String> items = ((S3SourceContext) context).readNewFiles();
+                items.forEach(buffer::add);
+            })
+            .build();
+    }
+
     private static void validateKafkaConfig(SourceConfig config) {
         if (!config.getProperties().containsKey("bootstrapServers")) {
             throw new IllegalArgumentException("Kafka source requires 'bootstrapServers' property");
@@ -133,6 +155,22 @@ public class SourceFactory {
         }
         if (!config.getProperties().containsKey("table") && !config.getProperties().containsKey("query")) {
             throw new IllegalArgumentException("JDBC source requires either 'table' or 'query' property");
+        }
+    }
+
+    private static void validateS3Config(SourceConfig config) {
+        Map<String, String> props = config.getProperties();
+        if (!props.containsKey("bucketName")) {
+            throw new IllegalArgumentException("S3 source requires 'bucketName' property");
+        }
+        if (!props.containsKey("region")) {
+            throw new IllegalArgumentException("S3 source requires 'region' property");
+        }
+        if (!props.containsKey("accessKey")) {
+            throw new IllegalArgumentException("S3 source requires 'accessKey' property");
+        }
+        if (!props.containsKey("secretKey")) {
+            throw new IllegalArgumentException("S3 source requires 'secretKey' property");
         }
     }
 } 

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import com.example.pipeline.factory.sink.ParquetSinkContext;
 import com.example.pipeline.factory.sink.FileSinkContext;
+import com.example.pipeline.factory.sink.S3SinkContext;
 
 import java.io.Serializable;
 import java.util.Map;
@@ -104,6 +105,7 @@ public class SinkFactory {
                 case "kafka" -> createKafkaSink(config);
                 case "file" -> createFileSink(config);
                 case "jdbc" -> createJdbcSink(config);
+                case "s3" -> createS3Sink(config);
                 default -> throw new IllegalArgumentException("Unknown sink type: " + config.getType());
             };
         } catch (Exception e) {
@@ -250,5 +252,45 @@ public class SinkFactory {
                 }
             }
         );
+    }
+
+    private static Sink<String> createS3Sink(SinkConfig config) {
+        Map<String, String> props = config.getProperties();
+        
+        // Validate required properties
+        if (!props.containsKey("bucketName")) {
+            throw new IllegalArgumentException("S3 sink requires 'bucketName' property");
+        }
+        if (!props.containsKey("region")) {
+            throw new IllegalArgumentException("S3 sink requires 'region' property");
+        }
+        if (!props.containsKey("accessKey")) {
+            throw new IllegalArgumentException("S3 sink requires 'accessKey' property");
+        }
+        if (!props.containsKey("secretKey")) {
+            throw new IllegalArgumentException("S3 sink requires 'secretKey' property");
+        }
+
+        logger.info("Creating S3 sink for bucket: {}", props.get("bucketName"));
+        
+        return SinkBuilder
+            .sinkBuilder("s3-sink", ctx -> new S3SinkContext(props))
+            .<String>receiveFn((context, item) -> {
+                if (item != null && !item.isEmpty()) {
+                    logger.debug("Received item for S3 upload: {}", item);
+                    ((S3SinkContext)context).receive(item);
+                }
+            })
+            .destroyFn(context -> {
+                try {
+                    logger.info("Destroying S3SinkContext");
+                    ((S3SinkContext)context).close();
+                    logger.info("Successfully destroyed S3SinkContext");
+                } catch (Exception e) {
+                    logger.error("Error destroying S3SinkContext: {}", e.getMessage(), e);
+                    throw e;
+                }
+            })
+            .build();
     }
 } 
