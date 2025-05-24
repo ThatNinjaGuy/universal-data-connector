@@ -106,3 +106,6 @@ config.local.* src/main/resources/pipeline-config.yaml
 pipeline-config.yaml
 pipeline-config-*.yaml
 !pipeline-config-example.yaml
+
+.bfg-report
+.mvn
