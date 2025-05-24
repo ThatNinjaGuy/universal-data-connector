@@ -1,8 +1,6 @@
 id,project,status,assignee,deadline
-101,Project X,important,John,2024-06-01
-102,Project Y,pending,Alice,2024-06-15
-103,Project Z,important,Bob,2024-07-01
+101,Project X,important,John,2024-05-15
+102,Project Y,normal,Alice,2024-06-01
+103,Project Z,important,Bob,2024-07-15
 104,Project W,normal,Sarah,2024-06-30
 105,Project V,important,Mike,2024-08-01
-
-

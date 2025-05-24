@@ -100,12 +100,14 @@ tmp/
 
 # Local configuration files
 *.local
-config.local.* src/main/resources/pipeline-config.yaml
+config.local.* 
+src/main/resources/pipeline-config.yaml
 
 # Pipeline configuration files
 pipeline-config.yaml
 pipeline-config-*.yaml
 !pipeline-config-example.yaml
 
+# BFG and Maven
 .bfg-report
 .mvn
