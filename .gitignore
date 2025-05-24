@@ -101,3 +101,11 @@ tmp/
 # Local configuration files
 *.local
 config.local.* 
+
+.bfg-report
+.mvn
+
+# Pipeline configuration files
+pipeline-config.yaml
+pipeline-config-*.yaml
+!pipeline-config-example.yaml
