@@ -58,7 +58,7 @@ public class S3SinkContext implements AutoCloseable {
 
             String sourceInfo = parts[0];
             String typeInfo = parts[1];
-            String content = parts[2];
+            String base64Content = parts[2];
 
             // Extract filename from SOURCE=<filename>
             String filename = sourceInfo.substring(sourceInfo.indexOf('=') + 1);
@@ -66,16 +66,19 @@ public class S3SinkContext implements AutoCloseable {
             // Create S3 key with prefix
             String s3Key = prefix + filename;
 
+            // Decode base64 content
+            byte[] content = java.util.Base64.getDecoder().decode(base64Content);
+
             // Create metadata
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentType(getContentType(typeInfo));
-            metadata.setContentLength(content.getBytes().length);
+            metadata.setContentLength(content.length);
 
             // Upload to S3
             PutObjectRequest putRequest = new PutObjectRequest(
                 bucketName,
                 s3Key,
-                new ByteArrayInputStream(content.getBytes()),
+                new ByteArrayInputStream(content),
                 metadata
             );
 
@@ -92,7 +95,9 @@ public class S3SinkContext implements AutoCloseable {
         String type = typeInfo.substring(typeInfo.indexOf('=') + 1);
         return switch (type.toUpperCase()) {
             case "CSV" -> "text/csv";
-            case "TEXT" -> "text/plain";
+            case "PARQUET" -> "application/x-parquet";
+            case "CRC" -> "application/octet-stream";
+            case "BINARY" -> "application/octet-stream";
             default -> "application/octet-stream";
         };
     }

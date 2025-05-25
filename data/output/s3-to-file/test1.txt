@@ -1,0 +1,8 @@
+important message from file 1
+not so important message
+another important update from file
+this should be filtered out
+very important notification
+regular message here
+important alert from system 
+
