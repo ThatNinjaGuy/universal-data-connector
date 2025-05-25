@@ -59,9 +59,11 @@ public class S3SinkContext implements SinkContext<String>, AutoCloseable {
         }
 
         try {
-            // Parse the item which contains metadata and content
-            // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
-            String[] parts = item.split("\\|", 3);
+            // Adapt the content to ensure it's base64 encoded
+            String adaptedItem = S3SinkAdapter.adaptContent(item);
+
+            // Parse the adapted item
+            String[] parts = adaptedItem.split("\\|", 3);
             if (parts.length != 3) {
                 throw new IllegalArgumentException("Invalid item format");
             }
