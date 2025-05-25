@@ -26,7 +26,7 @@ public class PipelineManager {
         this.runningJobs = new ConcurrentHashMap<>();
     }
 
-    public void startPipeline(String configPath) {
+    public void startPipelines(String configPath) {
         try {
             PipelineConfig config = ConfigurationLoader.load(configPath);
             if (config.getPipelines() == null || config.getPipelines().isEmpty()) {
@@ -60,34 +60,23 @@ public class PipelineManager {
 
     public void startAllPipelines(String configDirectory) {
         try {
-            List<String> configFiles = findConfigurationFiles(configDirectory);
+            logger.info("Starting to look for pipeline configurations in: {}", configDirectory);
+            List<String> configFiles = ConfigurationLoader.findConfigurationFiles(configDirectory);
             logger.info("Found {} pipeline configurations", configFiles.size());
             
+            if (configFiles.isEmpty()) {
+                logger.warn("No configuration files found in directory: {}", configDirectory);
+                return;
+            }
+            
             for (String configFile : configFiles) {
-                startPipeline(configFile);
+                logger.info("Processing configuration file: {}", configFile);
+                startPipelines(configFile);
             }
         } catch (Exception e) {
             logger.error("Failed to start all pipelines: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to start all pipelines", e);
         }
-    }
-
-    private List<String> findConfigurationFiles(String directory) throws IOException {
-        List<String> configFiles = new ArrayList<>();
-        File dir = new File(directory);
-        
-        if (!dir.exists() || !dir.isDirectory()) {
-            throw new IOException("Invalid configuration directory: " + directory);
-        }
-
-        File[] files = dir.listFiles((d, name) -> name.endsWith(".yaml") || name.endsWith(".yml"));
-        if (files != null) {
-            for (File file : files) {
-                configFiles.add(file.getAbsolutePath());
-            }
-        }
-        
-        return configFiles;
     }
 
     public void stopPipeline(String jobName) {

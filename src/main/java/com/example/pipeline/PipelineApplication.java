@@ -25,8 +25,8 @@ public class PipelineApplication {
     public CommandLineRunner commandLineRunner(PipelineService pipelineService) {
         return args -> {
             try {
-                logger.info("Starting all pipelines from configuration directory: config");
-                pipelineService.startAllPipelines("pipeline-config.yaml");
+                logger.info("Starting all pipelines from configuration directory");
+                pipelineService.startAllPipelines("pipeline-config");
             } catch (Exception e) {
                 logger.error("Failed to start pipelines: {}", e.getMessage(), e);
                 System.exit(1);

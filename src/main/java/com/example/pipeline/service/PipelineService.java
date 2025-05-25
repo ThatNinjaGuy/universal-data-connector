@@ -26,10 +26,10 @@ public class PipelineService {
         }
     }
 
-    public void startPipeline(String configFile) {
+    public void startPipelines(String configFile) {
         try {
             logger.info("Starting pipeline with configuration from: {}", configFile);
-            pipelineManager.startPipeline(configFile);
+            pipelineManager.startPipelines(configFile);
         } catch (Exception e) {
             throw new RuntimeException("Pipeline execution failed: " + e.getMessage(), e);
         }
