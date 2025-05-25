@@ -10,9 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,57 +23,45 @@ public class PipelineManager {
         this.runningJobs = new ConcurrentHashMap<>();
     }
 
-    public void startPipelines(String configPath) {
+    public void startAllPipelines(String configPath) {
         try {
+            logger.info("Starting to look for pipeline configurations in: {}", configPath);
             PipelineConfig config = ConfigurationLoader.load(configPath);
-            if (config.getPipelines() == null || config.getPipelines().isEmpty()) {
-                logger.error("No pipelines found in configuration: {}", configPath);
-                return;
-            }
-
-            for (PipelineConfig.Pipeline pipelineConfig : config.getPipelines()) {
-                try {
-                    PipelineBuilder builder = new PipelineBuilder(pipelineConfig);
-                    Pipeline pipeline = builder.build();
-                    
-                    String jobName = pipelineConfig.getName();
-                    if (jobName == null || jobName.isEmpty()) {
-                        jobName = new File(configPath).getName() + "-" + runningJobs.size();
-                    }
-                    
-                    Job job = jetService.newJob(pipeline);
-                    runningJobs.put(jobName, job);
-                    
-                    logger.info("Started pipeline job '{}' from configuration: {}", jobName, configPath);
-                } catch (Exception e) {
-                    logger.error("Failed to start pipeline '{}': {}", pipelineConfig.getName(), e.getMessage(), e);
-                }
-            }
+            startPipelinesFromConfig(config, configPath);
         } catch (Exception e) {
-            logger.error("Failed to load configuration from {}: {}", configPath, e.getMessage(), e);
-            throw new RuntimeException("Failed to start pipeline", e);
+            logger.error("Failed to start pipelines: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to start pipelines", e);
         }
     }
 
-    public void startAllPipelines(String configDirectory) {
-        try {
-            logger.info("Starting to look for pipeline configurations in: {}", configDirectory);
-            List<String> configFiles = ConfigurationLoader.findConfigurationFiles(configDirectory);
-            logger.info("Found {} pipeline configurations", configFiles.size());
-            
-            if (configFiles.isEmpty()) {
-                logger.warn("No configuration files found in directory: {}", configDirectory);
-                return;
-            }
-            
-            for (String configFile : configFiles) {
-                logger.info("Processing configuration file: {}", configFile);
-                startPipelines(configFile);
-            }
-        } catch (Exception e) {
-            logger.error("Failed to start all pipelines: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to start all pipelines", e);
+    private void startPipelinesFromConfig(PipelineConfig config, String configPath) {
+        if (config.getPipelines() == null || config.getPipelines().isEmpty()) {
+            logger.error("No pipelines found in configuration: {}", configPath);
+            return;
         }
+
+        for (PipelineConfig.Pipeline pipelineConfig : config.getPipelines()) {
+            try {
+                startSinglePipeline(pipelineConfig);
+            } catch (Exception e) {
+                logger.error("Failed to start pipeline '{}': {}", pipelineConfig.getName(), e.getMessage(), e);
+            }
+        }
+    }
+
+    private void startSinglePipeline(PipelineConfig.Pipeline pipelineConfig) {
+        PipelineBuilder builder = new PipelineBuilder(pipelineConfig);
+        Pipeline pipeline = builder.build();
+        
+        String jobName = pipelineConfig.getName();
+        if (jobName == null || jobName.isEmpty()) {
+            jobName = "pipeline-" + runningJobs.size();
+        }
+        
+        Job job = jetService.newJob(pipeline);
+        runningJobs.put(jobName, job);
+        
+        logger.info("Started pipeline job '{}'", jobName);
     }
 
     public void stopPipeline(String jobName) {

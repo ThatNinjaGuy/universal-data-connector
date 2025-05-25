@@ -17,19 +17,11 @@ public class PipelineService {
         this.pipelineManager = new PipelineManager(jetService);
     }
 
-    public void startAllPipelines(String configDirectory) {
-        try {
-            logger.info("Starting all pipelines from configuration directory: {}", configDirectory);
-            pipelineManager.startAllPipelines(configDirectory);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to start all pipelines: " + e.getMessage(), e);
-        }
-    }
 
-    public void startPipelines(String configFile) {
+    public void startAllPipelines(String configFile) {
         try {
             logger.info("Starting pipeline with configuration from: {}", configFile);
-            pipelineManager.startPipelines(configFile);
+            pipelineManager.startAllPipelines(configFile);
         } catch (Exception e) {
             throw new RuntimeException("Pipeline execution failed: " + e.getMessage(), e);
         }
