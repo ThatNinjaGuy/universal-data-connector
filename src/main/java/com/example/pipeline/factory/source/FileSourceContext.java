@@ -85,7 +85,7 @@ public class FileSourceContext implements Serializable {
             File[] files = dir.listFiles((d, name) -> {
                 File f = new File(d, name);
                 boolean matches = f.isFile() && matchesPattern(name);
-                logger.debug("File {} matches pattern: {}", name, matches);
+                // logger.debug("File {} matches pattern: {}", name, matches);
                 return matches;
             });
             

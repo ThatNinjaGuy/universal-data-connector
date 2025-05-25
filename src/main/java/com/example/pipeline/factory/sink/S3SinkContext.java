@@ -10,16 +10,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.util.Map;
 
-public class S3SinkContext implements AutoCloseable {
+public class S3SinkContext implements SinkContext<String>, AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(S3SinkContext.class);
-    private final AmazonS3 s3Client;
-    private final String bucketName;
-    private final String prefix;
+    private final Map<String, String> properties;
+    private AmazonS3 s3Client;
+    private String bucketName;
+    private String prefix;
 
     public S3SinkContext(Map<String, String> properties) {
+        this.properties = properties;
+    }
+
+    @Override
+    public void init() {
         try {
             // Initialize AWS credentials
             BasicAWSCredentials awsCredentials = new BasicAWSCredentials(
@@ -47,7 +52,12 @@ public class S3SinkContext implements AutoCloseable {
         }
     }
 
+    @Override
     public void receive(String item) {
+        if (s3Client == null) {
+            throw new IllegalStateException("S3SinkContext not initialized. Call init() first.");
+        }
+
         try {
             // Parse the item which contains metadata and content
             // Format: SOURCE=<filename>|TYPE=<filetype>|<content>

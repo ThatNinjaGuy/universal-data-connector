@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-public class ParquetSinkContext implements Serializable {
+public class ParquetSinkContext implements SinkContext<String>, Serializable {
     private static final Logger logger = LoggerFactory.getLogger(ParquetSinkContext.class);
     private final String directory;
     private final String schema;
@@ -36,7 +36,60 @@ public class ParquetSinkContext implements Serializable {
         this.directory = directory;
         this.schema = schema;
         this.batchSize = batchSize;
+    }
+
+    public static void validateConfig(Map<String, String> props) {
+        if (!props.containsKey("path")) {
+            throw new IllegalArgumentException("Parquet sink requires 'path' property");
+        }
+        if (!props.containsKey("schema")) {
+            throw new IllegalArgumentException("Parquet sink requires 'schema' property");
+        }
+        validateSchema(props.get("schema"));
+    }
+
+    private static void validateSchema(String schema) {
         try {
+            // Remove whitespace and newlines for validation
+            String normalizedSchema = schema.replaceAll("\\s+", "");
+            
+            // Basic Avro schema validation
+            if (!normalizedSchema.contains("\"type\":\"record\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing type record");
+            }
+            if (!normalizedSchema.contains("\"fields\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing fields");
+            }
+            if (!normalizedSchema.contains("\"name\"")) {
+                throw new IllegalArgumentException("Invalid Avro schema format: missing name");
+            }
+            
+            // Log the schema for debugging
+            logger.debug("Validated Parquet schema: {}", schema);
+        } catch (Exception e) {
+            logger.error("Schema validation failed: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid Parquet schema: " + e.getMessage());
+        }
+    }
+
+    private boolean isValidItemFormat(String item) {
+        if (item == null || item.isEmpty()) {
+            logger.warn("Received empty item, skipping");
+            return false;
+        }
+
+        if (!item.startsWith("SOURCE=") && !item.startsWith("JDBC_SOURCE")) {
+            logger.error("Invalid item format for Parquet processing: {}", item);
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public void init() {
+        try {
+            validateSchema(schema);
             this.avroSchema = new Schema.Parser().parse(schema);
             logger.info("Initialized ParquetSinkContext with directory: {}, schema: {}, batch size: {}", 
                 directory, avroSchema.getName(), batchSize);
@@ -62,16 +115,20 @@ public class ParquetSinkContext implements Serializable {
         }));
     }
 
-    public void write(String item) {
+    @Override
+    public void receive(String item) {
         try {
+            if (!isValidItemFormat(item)) {
+                return;
+            }
+
+            logger.info("Received item for Parquet processing: {}", item);
+            
             if (item.startsWith("JDBC_SOURCE")) {
                 processJdbcFormattedItem(item);
             } 
             else if (item.startsWith("SOURCE=")) {
                 processFileBasedItem(item);
-            } 
-            else {
-                logger.error("Unrecognized item format: {}", item);
             }
         } catch (Exception e) {
             logger.error("Error processing item: {}", e.getMessage(), e);
@@ -389,6 +446,7 @@ public class ParquetSinkContext implements Serializable {
         return writers.computeIfAbsent(sourceFile, this::createWriter);
     }
 
+    @Override
     public void close() {
         try {
             // Flush remaining batches

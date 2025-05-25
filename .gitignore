@@ -111,3 +111,6 @@ pipeline-config-*.yaml
 # BFG and Maven
 .bfg-report
 .mvn
+
+# Output files
+output/
