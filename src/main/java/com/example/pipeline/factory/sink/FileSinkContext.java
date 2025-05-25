@@ -66,8 +66,6 @@ public class FileSinkContext implements Serializable {
      */
     public void write(String item) {
         try {
-            logger.debug("Processing item");
-            
             // Parse metadata from the item
             // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
             String[] parts = item.split("\\|", -1);
@@ -77,7 +75,6 @@ public class FileSinkContext implements Serializable {
             }
             
             String sourceFile = parts[0].substring("SOURCE=".length());
-            String fileType = parts[1].substring("TYPE=".length());
             String content = parts[2];
             
             // Get or create writer for this source file
