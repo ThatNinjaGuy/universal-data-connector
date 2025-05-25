@@ -103,7 +103,7 @@ public class DirectorySourceContext implements Serializable {
 
                         String relativePath = getRelativePath(file);
                         if (processedFiles.contains(relativePath)) {
-                            logger.debug("File {} has already been processed, skipping", relativePath);
+                            // logger.debug("File {} has already been processed, skipping", relativePath);
                             return FileVisitResult.CONTINUE;
                         }
 

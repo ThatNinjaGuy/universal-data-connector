@@ -142,7 +142,7 @@ public class S3SourceContext implements Serializable {
                             logger.error("Failed to read file {}: {}", key, e.getMessage());
                         }
                     } else {
-                        logger.debug("File {} has already been processed or doesn't match pattern, skipping", key);
+                        // logger.debug("File {} has already been processed or doesn't match pattern, skipping", key);
                     }
                 }
                 

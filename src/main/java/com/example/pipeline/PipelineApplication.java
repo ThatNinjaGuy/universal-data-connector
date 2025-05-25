@@ -12,7 +12,8 @@ import org.slf4j.LoggerFactory;
 @SpringBootApplication
 @ComponentScan(basePackages = {
     "com.example.pipeline.config",
-    "com.example.pipeline.service"
+    "com.example.pipeline.service",
+    "com.example.pipeline.controller"
 })
 public class PipelineApplication {
     private static final Logger logger = LoggerFactory.getLogger(PipelineApplication.class);

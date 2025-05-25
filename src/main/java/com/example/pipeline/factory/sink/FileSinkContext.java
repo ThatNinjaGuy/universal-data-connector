@@ -66,7 +66,7 @@ public class FileSinkContext implements Serializable {
      */
     public void write(String item) {
         try {
-            logger.debug("Processing item: {}", item);
+            logger.debug("Processing item");
             
             // Parse metadata from the item
             // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
