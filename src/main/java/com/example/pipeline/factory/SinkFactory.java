@@ -161,7 +161,7 @@ public class SinkFactory {
                         return;
                     }
                     
-                    logger.debug("Writing item to Parquet: {}", item);
+                    logger.debug("Writing item to Parquet");
                     ((ParquetSinkContext)context).write(item);
                 }
             })
@@ -277,7 +277,7 @@ public class SinkFactory {
             .sinkBuilder("s3-sink", ctx -> new S3SinkContext(props))
             .<String>receiveFn((context, item) -> {
                 if (item != null && !item.isEmpty()) {
-                    logger.debug("Received item for S3 upload: {}", item);
+                    // logger.debug("Received item for S3 upload: {}", item);
                     ((S3SinkContext)context).receive(item);
                 }
             })

@@ -5,6 +5,7 @@ import com.example.pipeline.factory.source.JdbcSourceContext;
 import com.example.pipeline.factory.source.FileSourceContext;
 import com.example.pipeline.factory.source.KafkaSourceContext;
 import com.example.pipeline.factory.source.S3SourceContext;
+import com.example.pipeline.factory.source.DirectorySourceContext;
 import com.hazelcast.jet.pipeline.StreamSource;
 import com.hazelcast.jet.pipeline.SourceBuilder;
 import com.hazelcast.jet.core.Processor;
@@ -46,6 +47,7 @@ public class SourceFactory {
                 case "file" -> createFileSource(config);
                 case "jdbc" -> createJdbcSource(config);
                 case "s3" -> createS3Source(config);
+                case "directory" -> createDirectorySource(config);
                 default -> throw new IllegalArgumentException("Unknown source type: " + config.getType());
             };
         } catch (Exception e) {
@@ -131,6 +133,24 @@ public class SourceFactory {
             .build();
     }
 
+    private static StreamSource<String> createDirectorySource(SourceConfig config) {
+        validateDirectoryConfig(config);
+        Map<String, String> properties = config.getProperties();
+        
+        return SourceBuilder
+            .stream("directory-source", ctx -> new DirectorySourceContext(
+                properties.get("path"),
+                properties.getOrDefault("pattern", "*.*"),
+                Boolean.parseBoolean(properties.getOrDefault("recursive", "false")),
+                Boolean.parseBoolean(properties.getOrDefault("preserveStructure", "false"))
+            ))
+            .<String>fillBufferFn((context, buffer) -> {
+                List<String> items = ((DirectorySourceContext) context).readNewFiles();
+                items.forEach(buffer::add);
+            })
+            .build();
+    }
+
     private static void validateKafkaConfig(SourceConfig config) {
         if (!config.getProperties().containsKey("bootstrapServers")) {
             throw new IllegalArgumentException("Kafka source requires 'bootstrapServers' property");
@@ -171,6 +191,12 @@ public class SourceFactory {
         }
         if (!props.containsKey("secretKey")) {
             throw new IllegalArgumentException("S3 source requires 'secretKey' property");
+        }
+    }
+
+    private static void validateDirectoryConfig(SourceConfig config) {
+        if (!config.getProperties().containsKey("path")) {
+            throw new IllegalArgumentException("Directory source requires 'path' property");
         }
     }
 } 

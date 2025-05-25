@@ -249,7 +249,6 @@ public class ParquetSinkContext implements Serializable {
         }
 
         if (hasData) {
-            logger.debug("Created record with fields: {}", fieldDebug);
             return record;
         } else {
             logger.debug("Skipping record as it contains no data");

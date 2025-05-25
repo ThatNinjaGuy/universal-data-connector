@@ -1,56 +1,70 @@
 package com.example.pipeline.service;
 
-import com.example.pipeline.config.PipelineConfig;
-import com.example.pipeline.pipeline.PipelineBuilder;
+import com.example.pipeline.dto.JobInfo;
+import com.example.pipeline.pipeline.PipelineManager;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.jet.JetService;
-import com.hazelcast.jet.pipeline.Pipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
 
-import java.io.InputStream;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class PipelineService {
     private static final Logger logger = LoggerFactory.getLogger(PipelineService.class);
-    private final JetService jetService;
+    private final PipelineManager pipelineManager;
 
     public PipelineService(HazelcastInstance hazelcastInstance) {
-        this.jetService = hazelcastInstance.getJet();
+        JetService jetService = hazelcastInstance.getJet();
+        this.pipelineManager = new PipelineManager(jetService);
     }
 
-    public void startPipeline(String configFile) {
+    public void startAllPipelines(String configFile) {
         try {
-            logger.info("Loading pipeline configuration from: {}", configFile);
-            PipelineConfig config = loadConfig(configFile);
-            
-            if (config.getPipelines() == null || config.getPipelines().isEmpty()) {
-                throw new IllegalArgumentException("No pipelines defined in configuration");
-            }
-
-            for (PipelineConfig.Pipeline pipelineConfig : config.getPipelines()) {
-                logger.info("Starting pipeline: {}", pipelineConfig.getName());
-                PipelineBuilder builder = new PipelineBuilder(pipelineConfig);
-                Pipeline pipeline = builder.build();      
-                jetService.newJob(pipeline);
-                logger.info("Pipeline {} started successfully", pipelineConfig.getName());
-            }
+            logger.info("Starting pipeline with configuration from: {}", configFile);
+            pipelineManager.startAllPipelines(configFile);
         } catch (Exception e) {
             throw new RuntimeException("Pipeline execution failed: " + e.getMessage(), e);
         }
     }
 
-    private PipelineConfig loadConfig(String configFile) {
-        try (InputStream input = getClass().getClassLoader().getResourceAsStream(configFile)) {
-            if (input == null) {
-                throw new IllegalArgumentException("Config file not found: " + configFile);
-            }
-            return new Yaml(new Constructor(PipelineConfig.class)).load(input);
+    public void stopPipeline(String jobName) {
+        try {
+            logger.info("Stopping pipeline: {}", jobName);
+            pipelineManager.stopPipeline(jobName);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load config: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to stop pipeline: " + e.getMessage(), e);
         }
+    }
+
+    public void stopAllPipelines() {
+        try {
+            logger.info("Stopping all running pipelines");
+            pipelineManager.stopAllPipelines();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to stop all pipelines: " + e.getMessage(), e);
+        }
+    }
+
+    public boolean isPipelineRunning(String jobName) {
+        return pipelineManager.isPipelineRunning(jobName);
+    }
+
+    public Map<String, JobInfo> getRunningJobs() {
+        return pipelineManager.getRunningJobs().entrySet().stream()
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                entry -> new JobInfo(entry.getValue())
+            ));
+    }
+
+    public int getRunningPipelineCount() {
+        return pipelineManager.getRunningJobs().size();
+    }
+
+    public boolean hasRunningPipelines() {
+        return !pipelineManager.getRunningJobs().isEmpty();
     }
 } 

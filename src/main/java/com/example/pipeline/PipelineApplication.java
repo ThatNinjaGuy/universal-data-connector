@@ -12,7 +12,8 @@ import org.slf4j.LoggerFactory;
 @SpringBootApplication
 @ComponentScan(basePackages = {
     "com.example.pipeline.config",
-    "com.example.pipeline.service"
+    "com.example.pipeline.service",
+    "com.example.pipeline.controller"
 })
 public class PipelineApplication {
     private static final Logger logger = LoggerFactory.getLogger(PipelineApplication.class);
@@ -25,10 +26,10 @@ public class PipelineApplication {
     public CommandLineRunner commandLineRunner(PipelineService pipelineService) {
         return args -> {
             try {
-                logger.info("Starting pipeline with configuration from: pipeline-config.yaml");
-                pipelineService.startPipeline("pipeline-config.yaml");
+                logger.info("Starting all pipelines from configuration directory");
+                pipelineService.startAllPipelines("pipeline-config/pipeline-config.yaml");
             } catch (Exception e) {
-                logger.error("Failed to start pipeline: {}", e.getMessage(), e);
+                logger.error("Failed to start pipelines: {}", e.getMessage(), e);
                 System.exit(1);
             }
         };

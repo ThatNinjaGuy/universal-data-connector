@@ -127,7 +127,7 @@ public class FileSourceContext implements Serializable {
                             logger.error("Failed to read file {}: {}", fileName, e.getMessage());
                         }
                     } else {
-                        logger.debug("File {} has already been processed, skipping", fileName);
+                        // logger.debug("File {} has already been processed, skipping", fileName);
                     }
                 }
             }
