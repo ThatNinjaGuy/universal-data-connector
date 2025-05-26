@@ -4,6 +4,8 @@ import com.example.pipeline.config.ConfigurationLoader;
 import com.example.pipeline.config.PipelineConfig;
 import com.hazelcast.jet.JetService;
 import com.hazelcast.jet.Job;
+import com.hazelcast.jet.config.JobConfig;
+import com.hazelcast.jet.config.ProcessingGuarantee;
 import com.hazelcast.jet.core.JobStatus;
 import com.hazelcast.jet.pipeline.Pipeline;
 import org.slf4j.Logger;
@@ -56,8 +58,14 @@ public class PipelineManager {
         if (jobName == null || jobName.isEmpty()) {
             jobName = "pipeline-" + runningJobs.size();
         }
+        jobName = jobName + "-" + System.currentTimeMillis();
         
-        Job job = jetService.newJob(pipeline);
+        JobConfig jobConfig = new JobConfig()
+                .setName(jobName)
+                .setAutoScaling(true)
+                .setMetricsEnabled(true)
+                .setStoreMetricsAfterJobCompletion(true);
+        Job job = jetService.newJob(pipeline, jobConfig);
         runningJobs.put(jobName, job);
         
         logger.info("Started pipeline job '{}'", jobName);

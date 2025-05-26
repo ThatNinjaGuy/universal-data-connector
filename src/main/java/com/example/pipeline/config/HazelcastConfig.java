@@ -1,6 +1,7 @@
 package com.example.pipeline.config;
 
 import com.hazelcast.config.Config;
+import com.hazelcast.config.ManagementCenterConfig;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.Hazelcast;
 import org.springframework.context.annotation.Bean;
@@ -31,7 +32,12 @@ public class HazelcastConfig {
         // Enable Jet
         config.getJetConfig()
             .setEnabled(true)
-            .setResourceUploadEnabled(true);
+                .setResourceUploadEnabled(true);
+            
+        ManagementCenterConfig managementCenterConfig = new ManagementCenterConfig();
+        managementCenterConfig.setScriptingEnabled(true);
+        managementCenterConfig.setConsoleEnabled(true);
+        config.setManagementCenterConfig(managementCenterConfig);
 
         // Create Hazelcast instance
         return Hazelcast.newHazelcastInstance(config);
