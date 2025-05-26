@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: pipeline-service
+
+hazelcast:
+  network:
+    join:
+      multicast:
+        enabled: false
+      tcp-ip:
+        enabled: true
+        member-list:
+          - 127.0.0.1
+  management-center:
+    enabled: true
+    url: http://localhost:8080/hazelcast-mancenter
+  jet:
+    enabled: true
+    resource-upload-enabled: true
+    instance:
+      cooperative-thread-count: 4
+      flow-control-period: 100
+      max-processor-accumulated-records: 1000000
+
+server:
+  port: 8081

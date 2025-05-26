@@ -87,4 +87,69 @@ public class PipelineController {
         logger.info("Getting count of running pipelines");
         return ResponseEntity.ok(pipelineService.getRunningPipelineCount());
     }
+
+    @PostMapping("/start")
+    @Operation(
+        summary = "Start all pipelines",
+        description = "Starts all pipelines using the provided configuration file",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Successfully started pipelines"),
+            @ApiResponse(responseCode = "400", description = "Invalid configuration file path"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+        }
+    )
+    public ResponseEntity<Void> startAllPipelines(
+        @Parameter(description = "Path to the configuration file", required = true)
+        @RequestParam(required = true) String configFilePath
+    ) {
+        if (configFilePath == null || configFilePath.trim().isEmpty()) {
+            throw new IllegalArgumentException("Configuration file path cannot be empty");
+        }
+        
+        try {
+            logger.info("Starting all pipelines with config file: {}", configFilePath);
+            pipelineService.startAllPipelines(configFilePath.trim());
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid configuration file path: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            logger.error("Failed to start pipelines: {}", e.getMessage());
+            throw new RuntimeException("Failed to start pipelines: " + e.getMessage(), e);
+        }
+    }
+
+    @PostMapping("/stop/{jobName}")
+    @Operation(
+        summary = "Stop a specific pipeline",
+        description = "Stops a specific pipeline by its job name",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Successfully stopped pipeline"),
+            @ApiResponse(responseCode = "404", description = "Pipeline not found"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+        }
+    )
+    public ResponseEntity<Void> stopPipeline(
+        @Parameter(description = "Name of the pipeline to stop", required = true)
+        @PathVariable String jobName
+    ) {
+        logger.info("Stopping pipeline: {}", jobName);
+        pipelineService.stopPipeline(jobName);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/stop-all")
+    @Operation(
+        summary = "Stop all pipelines",
+        description = "Stops all currently running pipelines",
+        responses = {
+            @ApiResponse(responseCode = "200", description = "Successfully stopped all pipelines"),
+            @ApiResponse(responseCode = "500", description = "Internal server error")
+        }
+    )
+    public ResponseEntity<Void> stopAllPipelines() {
+        logger.info("Stopping all pipelines");
+        pipelineService.stopAllPipelines();
+        return ResponseEntity.ok().build();
+    }
 } 

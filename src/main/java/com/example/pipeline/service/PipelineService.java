@@ -21,10 +21,10 @@ public class PipelineService {
         this.pipelineManager = new PipelineManager(jetService);
     }
 
-    public void startAllPipelines(String configFile) {
+    public void startAllPipelines(String configPath) {
         try {
-            logger.info("Starting pipeline with configuration from: {}", configFile);
-            pipelineManager.startAllPipelines(configFile);
+            logger.info("Starting pipeline with configuration from: {}", configPath);
+            pipelineManager.startAllPipelines(configPath);
         } catch (Exception e) {
             throw new RuntimeException("Pipeline execution failed: " + e.getMessage(), e);
         }
