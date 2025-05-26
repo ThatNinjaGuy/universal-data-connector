@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * - Output files preserve the original source filename
  * - Writers are managed per file and closed after writing
  */
-public class FileSinkContext implements Serializable {
+public class FileSinkContext implements SinkContext<String>, Serializable {
     private static final Logger logger = LoggerFactory.getLogger(FileSinkContext.class);
     
     // Base directory where all output files will be written
@@ -46,7 +46,10 @@ public class FileSinkContext implements Serializable {
         this.directory = directory;
         this.extension = extension;
         this.includeHeaders = includeHeaders;
-        
+    }
+
+    @Override
+    public void init() {
         logger.debug("Initializing FileSinkContext with directory: {}, extension: {}, includeHeaders: {}", 
             directory, extension, includeHeaders);
         
@@ -58,13 +61,8 @@ public class FileSinkContext implements Serializable {
         }
     }
 
-    /**
-     * Processes and writes a single item to its own output file.
-     * The item is expected to be in the format: "SOURCE=<filename>|TYPE=<filetype>|<content>"
-     *
-     * @param item The item to process and write, containing metadata and content
-     */
-    public void write(String item) {
+    @Override
+    public void receive(String item) {
         try {
             // Parse metadata from the item
             // Format: SOURCE=<filename>|TYPE=<filetype>|<content>
@@ -113,9 +111,7 @@ public class FileSinkContext implements Serializable {
         }
     }
 
-    /**
-     * Closes all writers and cleans up resources.
-     */
+    @Override
     public void close() {
         try {
             for (BufferedWriter writer : writers.values()) {
