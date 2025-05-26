@@ -110,19 +110,8 @@ public class FileSourceContext implements Serializable {
                                 content);
                             items.add(item);
                             
-                            // Move file to processed directory to prevent reprocessing
-                            File processedDir = new File("data/processed");
-                            if (!processedDir.exists()) {
-                                processedDir.mkdirs();
-                            }
-                            
-                            File destFile = new File(processedDir, fileName);
-                            if (file.renameTo(destFile)) {
-                                processedFiles.add(fileName);
-                                logger.info("Successfully processed and moved {} to processed directory", fileName);
-                            } else {
-                                logger.error("Failed to move file {} to processed directory", fileName);
-                            }
+                            processedFiles.add(fileName);
+                            logger.info("Successfully processed {}", fileName);
                         } catch (IOException e) {
                             logger.error("Failed to read file {}: {}", fileName, e.getMessage());
                         }
